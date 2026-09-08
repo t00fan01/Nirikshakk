@@ -22,9 +22,10 @@ const LiveThreatFeed = () => {
     const reconnectDelayRef = useRef<number>(1000);
 
     const handleNewAlerts = (newAlerts: AlertRecord[]) => {
+        const safeAlerts = Array.isArray(newAlerts) ? newAlerts : ((newAlerts as any)?.alerts || []);
         setAlerts((previous) => {
             const merged = new Map<string, AlertRecord>();
-            [...newAlerts, ...previous].forEach((alert) => {
+            [...safeAlerts, ...previous].forEach((alert) => {
                 if (alert.alert_id) merged.set(alert.alert_id, alert);
             });
             return Array.from(merged.values())
@@ -74,7 +75,7 @@ const LiveThreatFeed = () => {
                 if (!isMounted) return;
                 ticket = res.ticket;
             } catch (err) {
-                console.error('Failed to retrieve WebSocket ticket:', err);
+                console.warn('WebSocket ticket unavailable, switching to HTTP polling fallback');
                 if (isMounted) {
                     setWsStatus('FALLBACK');
                     const delay = reconnectDelayRef.current;
@@ -183,16 +184,19 @@ const LiveThreatFeed = () => {
                                 key={alert.alert_id} 
                                 initial={{ opacity: 0, x: -10 }} 
                                 animate={{ opacity: 1, x: 0 }} 
-                                onClick={() => alert.account_id && navigate(`/dashboard?account=${encodeURIComponent(alert.account_id)}`)} 
+                                onClick={() => {
+                                    const target = alert.account_id || alert.wallet_address;
+                                    if (target) navigate(`/dashboard?account=${encodeURIComponent(target)}`);
+                                }} 
                                 className="w-full text-left flex gap-3 leading-relaxed hover:bg-white/5 rounded-lg p-2 transition-colors"
                             >
                                 <span className="text-white/20 shrink-0">[{formatTime(alert.timestamp)}]</span>
                                 <span className="text-[#FF4F00] shrink-0 uppercase font-black tracking-widest text-[9px] w-16">
-                                    {alert.severity ?? 'EVENT'}:
+                                    {alert.severity ?? alert.risk_level ?? 'EVENT'}:
                                 </span>
                                 <span className="text-white/80">
-                                    <strong className="text-white">{alert.account_id ?? 'WALLET / IP'}</strong> · {alert.classification ?? alert.alert_type ?? 'DETECTION'} · Risk {typeof alert.risk_score === 'number' ? alert.risk_score.toFixed(1) : 'Unknown'}
-                                    <span className="block text-white/40 mt-0.5">{alert.reason ?? alert.alert_type ?? 'Investigation event'}</span>
+                                    <strong className="text-white">{alert.account_id ?? alert.wallet_address ?? 'WALLET / IP'}</strong> · {alert.classification ?? alert.alert_type ?? (alert.risk_level ? `${alert.risk_level} RISK` : 'DETECTION')} · Risk {typeof alert.risk_score === 'number' ? alert.risk_score.toFixed(1) : 'Unknown'}
+                                    <span className="block text-white/40 mt-0.5">{alert.reason ?? alert.primary_reason ?? alert.alert_type ?? 'Investigation event'}</span>
                                 </span>
                             </motion.button>
                         ))}

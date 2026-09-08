@@ -44,13 +44,16 @@ export const api = {
   getTransactions: () => apiGet<Array<{ account_id?: string; timestamp?: string; transaction_id?: string }>>('/api/transactions'),
   getModelMetrics: () => apiGet<ModelMetricsResponse>('/api/model/metrics'),
   getModelFeatures: () => apiGet<{ features?: ModelFeatureImportance[] }>('/api/model/features'),
-  getAlerts: (filters?: { severity?: string; status?: string; classification?: string; account_id?: string }) => {
+  getAlerts: async (filters?: { severity?: string; status?: string; classification?: string; account_id?: string }) => {
     const params = new URLSearchParams();
     Object.entries(filters ?? {}).forEach(([key, value]) => {
       if (value) params.set(key, value);
     });
     const query = params.toString();
-    return apiGet<AlertRecord[]>(`/api/alerts${query ? `?${query}` : ''}`);
+    const result = await apiGet<AlertRecord[] | { total_alerts?: number; alerts?: AlertRecord[] }>(`/api/alerts${query ? `?${query}` : ''}`);
+    if (Array.isArray(result)) return result;
+    if (result && Array.isArray(result.alerts)) return result.alerts;
+    return [];
   },
   getAccountClassification: (accountId: string) => apiGet<Record<string, unknown>>(`/api/accounts/${encodeURIComponent(accountId)}/classification`),
   getAccountInvestigation: (accountId: string) => apiGet<AccountInvestigationResponse>(`/api/accounts/${encodeURIComponent(accountId)}/investigation`),
@@ -136,13 +139,16 @@ export interface ModelMetricsResponse {
 export interface AlertRecord {
   alert_id?: string;
   account_id?: string;
+  wallet_address?: string;
   transaction_id?: string;
   timestamp?: string;
   severity?: string;
+  risk_level?: string;
   classification?: string;
   risk_score?: number;
   mule_probability?: number;
   alert_type?: string;
   reason?: string;
+  primary_reason?: string;
   status?: string;
 }

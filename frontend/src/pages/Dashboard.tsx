@@ -205,40 +205,59 @@ const Dashboard = () => {
     useEffect(() => {
         const updateDimensions = () => {
             if (graphContainerRef.current) {
-                setGraphDimensions({
-                    width: graphContainerRef.current.offsetWidth,
-                    height: graphContainerRef.current.offsetHeight
-                });
+                const width = graphContainerRef.current.offsetWidth;
+                const height = graphContainerRef.current.offsetHeight;
+                if (width > 0 && height > 0) {
+                    setGraphDimensions({ width, height });
+                }
             }
         };
         updateDimensions();
+        const raf = requestAnimationFrame(updateDimensions);
         window.addEventListener('resize', updateDimensions);
-        return () => window.removeEventListener('resize', updateDimensions);
+        return () => {
+            cancelAnimationFrame(raf);
+            window.removeEventListener('resize', updateDimensions);
+        };
     }, [activeTab, sidebarOpen]);
 
     useEffect(() => {
-        if (fgRef.current) {
-            fgRef.current.d3Force('link').distance((link: any) => {
-                if (link.is_tether) {
-                    return link.type === 'outer_shell' ? 140 : 50;
+        if (activeTab === 'network' && fgRef.current) {
+            try {
+                const linkForce = fgRef.current.d3Force?.('link');
+                if (linkForce && typeof linkForce.distance === 'function') {
+                    linkForce.distance((link: any) => {
+                        if (link?.is_tether) {
+                            return link.type === 'outer_shell' ? 140 : 50;
+                        }
+                        return 15;
+                    });
                 }
-                return 15;
-            });
 
-            fgRef.current.d3Force('charge').strength(-60);
-            fgRef.current.d3Force('center').strength(1);
+                const chargeForce = fgRef.current.d3Force?.('charge');
+                if (chargeForce && typeof chargeForce.strength === 'function') {
+                    chargeForce.strength(-60);
+                }
 
-            const scene = fgRef.current.scene();
-            if (!scene.lights_injected) {
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-                const pointLight = new THREE.PointLight(0xffffff, 1.2);
-                pointLight.position.set(100, 100, 100);
-                scene.add(ambientLight);
-                scene.add(pointLight);
-                scene.lights_injected = true;
+                const centerForce = fgRef.current.d3Force?.('center');
+                if (centerForce && typeof centerForce.strength === 'function') {
+                    centerForce.strength(1);
+                }
+
+                const scene = fgRef.current.scene?.();
+                if (scene && !(scene as any).lights_injected) {
+                    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+                    const pointLight = new THREE.PointLight(0xffffff, 1.2);
+                    pointLight.position.set(100, 100, 100);
+                    scene.add(ambientLight);
+                    scene.add(pointLight);
+                    (scene as any).lights_injected = true;
+                }
+            } catch (err) {
+                console.warn('Unable to configure force simulation:', err);
             }
         }
-    }, [memoizedGraphData]);
+    }, [activeTab, memoizedGraphData]);
 
     const runDiagnostics = async () => {
         setRunningTests(true);
@@ -673,8 +692,8 @@ const Dashboard = () => {
                             >
                                 <ForceGraph3D
                                     ref={fgRef}
-                                    width={graphDimensions.width}
-                                    height={graphDimensions.height}
+                                    width={graphDimensions.width > 0 ? graphDimensions.width : undefined}
+                                    height={graphDimensions.height > 0 ? graphDimensions.height : undefined}
                                     graphData={filteredGraphData}
                                     backgroundColor="#0B0B12"
                                     nodeThreeObject={(node: any) => {
@@ -729,17 +748,17 @@ const Dashboard = () => {
                                         }, 1500);
                                     }}
                                     linkColor={(link: any) => {
-                                        if (link.is_tether) return 'rgba(0,0,0,0)';
-                                        return (link.source.is_flagged && link.target.is_flagged) ? 'rgba(234, 88, 12, 0.8)' : 'rgba(0, 214, 143, 0.15)';
+                                        if (link?.is_tether) return 'rgba(0,0,0,0)';
+                                        return (link?.source?.is_flagged && link?.target?.is_flagged) ? 'rgba(234, 88, 12, 0.8)' : 'rgba(0, 214, 143, 0.15)';
                                     }}
                                     linkWidth={(link: any) => {
-                                        if (link.is_tether) return 0;
-                                        return (link.source.is_flagged && link.target.is_flagged) ? 2.5 : 1.2;
+                                        if (link?.is_tether) return 0;
+                                        return (link?.source?.is_flagged && link?.target?.is_flagged) ? 2.5 : 1.2;
                                     }}
                                     linkDirectionalParticles={2}
-                                    linkDirectionalParticleWidth={(link: any) => link.is_tether ? 0 : 3}
+                                    linkDirectionalParticleWidth={(link: any) => link?.is_tether ? 0 : 3}
                                     linkDirectionalParticleSpeed={0.006}
-                                    linkDirectionalParticleColor={(link: any) => link.is_flagged ? '#ea580c' : '#00D68F'}
+                                    linkDirectionalParticleColor={(link: any) => link?.is_flagged ? '#ea580c' : '#00D68F'}
                                     enableNodeDrag={false}
                                     showNavInfo={false}
                                     cooldownTicks={150}
