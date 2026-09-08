@@ -18,6 +18,8 @@ backend/data/*.db
 backend/data/*.sqlite
 backend/data/normalized/
 backend/data/analysis/
+backend/data/graph/
+backend/data/*.graphml
 !backend/data/.gitignore
 
 # Model Artifacts
