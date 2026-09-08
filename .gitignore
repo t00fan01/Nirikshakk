@@ -16,6 +16,7 @@ backend/data/*.json
 backend/data/*.parquet
 backend/data/*.db
 backend/data/*.sqlite
+backend/data/normalized/
 !backend/data/.gitignore
 
 # Model Artifacts

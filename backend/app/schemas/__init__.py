@@ -4,6 +4,8 @@ from .transaction import (
     GroundTruthRecord,
     DatasetSummary,
     DatasetUploadResponse,
+    StorageInfo,
+    DatasetStatsResponse,
 )
 
 __all__ = [
@@ -12,4 +14,6 @@ __all__ = [
     "GroundTruthRecord",
     "DatasetSummary",
     "DatasetUploadResponse",
+    "StorageInfo",
+    "DatasetStatsResponse",
 ]

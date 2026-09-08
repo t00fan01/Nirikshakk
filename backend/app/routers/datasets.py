@@ -8,7 +8,9 @@ from app.pipeline.loader import (
     parse_csv_content,
     parse_json_content,
 )
-from app.schemas.transaction import DatasetUploadResponse
+from app.pipeline.normalizer import normalize_dataset
+from app.pipeline.storage import get_storage_dir, save_normalized_tables
+from app.schemas.transaction import DatasetUploadResponse, StorageInfo
 
 router = APIRouter()
 
@@ -18,9 +20,8 @@ async def upload_dataset(
     file: UploadFile = File(..., description="Bitcoin transaction dataset (.csv or .json)")
 ):
     """
-    Ingest and validate Bitcoin transaction datasets according to schema_v1.
-    Accepts CSV or JSON file uploads.
-    Performs full Pydantic validation across all records and returns an ingestion report.
+    Ingest and validate Bitcoin transaction datasets according to schema_v1,
+    then normalize with Polars and store as analytical Parquet tables (Phase 2 + Phase 3).
     """
     if not file.filename:
         raise HTTPException(
@@ -104,6 +105,28 @@ async def upload_dataset(
 
     summary = calculate_dataset_summary(valid_records) if valid_records else None
 
+    # Phase 3: Normalize and persist to local Parquet storage if dataset is valid
+    storage_info: Optional[StorageInfo] = None
+    if valid_records and validation_status != "FAILED":
+        try:
+            tables = normalize_dataset(valid_records)
+            written_paths = save_normalized_tables(tables)
+            sdir = get_storage_dir()
+            storage_info = StorageInfo(
+                normalized=True,
+                storage_dir=str(sdir),
+                transactions_file=written_paths.get("transactions", ""),
+                wallets_file=written_paths.get("wallets", ""),
+                network_observations_file=written_paths.get("network_observations", ""),
+                table_counts={
+                    "transactions": len(tables["transactions"]),
+                    "wallets": len(tables["wallets"]),
+                    "network_observations": len(tables["network_observations"]),
+                },
+            )
+        except Exception as err:
+            storage_info = None
+
     return DatasetUploadResponse(
         filename=filename,
         detected_format=detected_format,
@@ -113,4 +136,5 @@ async def upload_dataset(
         validation_status=validation_status,
         summary=summary,
         rejected_details=rejected_records[:50],
+        storage=storage_info,
     )

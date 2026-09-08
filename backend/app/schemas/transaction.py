@@ -84,6 +84,16 @@ class DatasetSummary(BaseModel):
     time_range_end: str
 
 
+class StorageInfo(BaseModel):
+    """Normalized analytical storage metadata (Phase 3)."""
+    normalized: bool = True
+    storage_dir: str
+    transactions_file: str
+    wallets_file: str
+    network_observations_file: str
+    table_counts: Dict[str, int]
+
+
 class DatasetUploadResponse(BaseModel):
     """
     Response payload returned upon dataset upload and schema validation.
@@ -96,3 +106,20 @@ class DatasetUploadResponse(BaseModel):
     validation_status: str = Field(..., description="'PASSED', 'PARTIAL', or 'FAILED'")
     summary: Optional[DatasetSummary] = None
     rejected_details: List[Dict[str, Any]] = Field(default_factory=list)
+    storage: Optional[StorageInfo] = None
+
+
+class DatasetStatsResponse(BaseModel):
+    """
+    Analytical summary statistics computed over normalized DuckDB/Parquet storage.
+    """
+    status: str
+    message: Optional[str] = None
+    transactions: int
+    wallets: int
+    network_observations: int
+    unique_ips: int
+    total_btc: float
+    time_range: Dict[str, Optional[str]]
+    top_wallets_by_activity: List[Dict[str, Any]] = Field(default_factory=list)
+    top_wallets_by_volume: List[Dict[str, Any]] = Field(default_factory=list)
