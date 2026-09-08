@@ -900,7 +900,7 @@ const Dashboard = () => {
             </aside>
 
             {/* MAIN CONTENT AREA */}
-            <main className="flex-grow overflow-y-auto relative bg-[#F1F5F9]">
+            <main className="flex-grow overflow-y-auto relative bg-[#F1F5F9]" data-lenis-prevent>
                 {/* Top Header Bar */}
                 <header className="sticky top-0 h-20 bg-white/40 backdrop-blur-xl border-b border-[#002A24]/5 z-40 px-8 flex items-center justify-between">
                     <div className="flex items-center space-x-4">
@@ -1329,7 +1329,7 @@ const Dashboard = () => {
                                         </div>
 
                                         {/* Content area */}
-                                        <div className="p-5 overflow-y-auto space-y-4 text-xs">
+                                        <div className="p-5 overflow-y-auto space-y-4 text-xs" data-lenis-prevent>
                                             <div>
                                                 <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase tracking-widest font-mono mb-1">
                                                     <span>Identifier</span>

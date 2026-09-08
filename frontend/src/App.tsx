@@ -46,7 +46,7 @@ const AppContent = () => {
   return (
     <div id="app">
       {!isDashboard && <NavigationBar />}
-      <main className={!isDashboard ? "pt-24 min-h-screen px-4 md:px-8 relative" : "h-screen w-full overflow-hidden relative"}>
+      <main className={!isDashboard ? "pt-24 min-h-screen px-4 md:px-8 relative" : "relative"}>
         <AnimatedRoutes />
       </main>
       {!isDashboard && <Footer />}
@@ -69,11 +69,11 @@ function App() {
       <AnimatePresence mode="wait">
         {isLoading && <Preloader key="preloader" />}
       </AnimatePresence>
-      <SmoothScroll>
-        <Router>
-            <AppContent />
-        </Router>
-      </SmoothScroll>
+      <Router>
+        <SmoothScroll>
+          <AppContent />
+        </SmoothScroll>
+      </Router>
     </>
   );
 }
