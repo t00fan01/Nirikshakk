@@ -17,6 +17,7 @@ backend/data/*.parquet
 backend/data/*.db
 backend/data/*.sqlite
 backend/data/normalized/
+backend/data/analysis/
 !backend/data/.gitignore
 
 # Model Artifacts
@@ -24,6 +25,7 @@ backend/models/*.pkl
 backend/models/*.joblib
 backend/models/*.pt
 backend/models/*.onnx
+backend/models/*.json
 !backend/models/.gitkeep
 
 # Node / Frontend
