@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
@@ -82,3 +82,17 @@ class DatasetSummary(BaseModel):
     total_btc_volume: float
     time_range_start: str
     time_range_end: str
+
+
+class DatasetUploadResponse(BaseModel):
+    """
+    Response payload returned upon dataset upload and schema validation.
+    """
+    filename: str
+    detected_format: str
+    total_rows: int
+    valid_rows: int
+    rejected_rows: int
+    validation_status: str = Field(..., description="'PASSED', 'PARTIAL', or 'FAILED'")
+    summary: Optional[DatasetSummary] = None
+    rejected_details: List[Dict[str, Any]] = Field(default_factory=list)

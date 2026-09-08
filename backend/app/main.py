@@ -16,6 +16,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.routers import datasets
+
+app.include_router(datasets.router, prefix="/api/datasets", tags=["Datasets"])
+
+
 @app.get("/")
 def read_root():
     return {
