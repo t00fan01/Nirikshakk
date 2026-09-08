@@ -1,0 +1,46 @@
+.gooey-container {
+    filter: url('#goo');
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 9999;
+    overflow: hidden;
+}
+
+.custom-cursor-dot {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    background: #2563eb;
+    border-radius: 50%;
+    pointer-events: none;
+    top: 0;
+    left: 0;
+    transition: width 0.3s, height 0.3s;
+    will-change: transform;
+}
+
+.custom-cursor-circle {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    background: #3b82f6;
+    border-radius: 50%;
+    pointer-events: none;
+    top: 0;
+    left: 0;
+    transition: width 0.3s, height 0.3s, background 0.3s;
+    will-change: transform;
+}
+
+/* Hover morph state */
+.custom-cursor-circle.hovering {
+    width: 80px;
+    height: 80px;
+    background: #60a5fa;
+}
+
+/* NOT USED

@@ -1,0 +1,31 @@
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.venv/
+venv/
+ENV/
+
+# Backend Data Artifacts
+backend/data/*.csv
+backend/data/*.json
+backend/data/*.parquet
+backend/data/*.db
+backend/data/*.sqlite
+!backend/data/.gitignore
+
+# Model Artifacts
+backend/models/*.pkl
+backend/models/*.joblib
+backend/models/*.pt
+backend/models/*.onnx
+!backend/models/.gitkeep
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.env.local
