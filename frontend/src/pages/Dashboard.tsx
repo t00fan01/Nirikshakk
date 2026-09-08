@@ -1,9 +1,10 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, Component } from 'react';
 import { 
     ShieldAlert, Activity, 
     CheckCircle2, XCircle, Play,
     Menu, X, ChevronRight, User, Loader2,
-    BarChart3, Search, ArrowUpDown, Network, FileText, SearchCheck, Layers
+    BarChart3, Search, ArrowUpDown, Network, FileText, SearchCheck, Layers,
+    RefreshCw, Crosshair, ExternalLink, AlertTriangle, Copy, Check
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -16,16 +17,20 @@ import ImpactDashboard from '../components/ImpactDashboard';
 import AccountInvestigation from '../components/AccountInvestigation';
 import ModelAnalytics from '../components/ModelAnalytics';
 import AlertsPage from '../components/AlertsPage';
-import { api } from '../lib/api';
+import { 
+    api, 
+    GraphNode, 
+    GraphLink, 
+    GraphStatsResponse, 
+    GraphEntityDetails, 
+    AlertDetailResponse, 
+    SearchResultItem,
+    GraphMeta
+} from '../lib/api';
 
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 
-interface StatsData {
-    total_accounts: number;
-    total_transactions: number;
-    flagged_networks_blocked: number;
-    frozen_suspicious_capital: number;
-}
+
 
 interface TestResult {
     name: string;
@@ -41,6 +46,59 @@ interface EntityRiskRow {
     riskLevel: string;
     keySignal: string;
     lastActivity: string;
+}
+
+const isWebGLAvailable = (): boolean => {
+    try {
+        const canvas = document.createElement('canvas');
+        return Boolean(window.WebGLRenderingContext && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+    } catch {
+        return false;
+    }
+};
+
+interface GraphErrorBoundaryProps {
+    children: React.ReactNode;
+    fallbackNodesCount?: number;
+    fallbackLinksCount?: number;
+}
+
+interface GraphErrorBoundaryState {
+    hasError: boolean;
+    errorMsg: string | null;
+}
+
+class GraphErrorBoundary extends Component<GraphErrorBoundaryProps, GraphErrorBoundaryState> {
+    constructor(props: GraphErrorBoundaryProps) {
+        super(props);
+        this.state = { hasError: false, errorMsg: null };
+    }
+
+    static getDerivedStateFromError(error: Error | { message?: string }) {
+        return { hasError: true, errorMsg: error?.message || 'WebGL Context Initialization Failure' };
+    }
+
+    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+        console.warn('3D Graph hardware acceleration notice:', error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="absolute inset-0 bg-[#0B0B12] flex flex-col items-center justify-center p-6 text-center z-10">
+                    <AlertTriangle className="w-12 h-12 text-amber-400 mb-3" />
+                    <h4 className="text-sm font-black text-white uppercase tracking-wider mb-1">WebGL Acceleration Required</h4>
+                    <p className="text-xs text-slate-400 max-w-md mb-4 leading-relaxed">
+                        3D graphics context unavailable in this environment ({this.state.errorMsg}). The investigation graph was successfully loaded from the NIRIKSHAK backend.
+                    </p>
+                    <div className="p-3 bg-black/40 border border-white/10 rounded-xl font-mono text-[11px] text-emerald-400">
+                        Backend Graph: {this.props.fallbackNodesCount || 0} Subgraph Nodes • {this.props.fallbackLinksCount || 0} Edges Ready
+                    </div>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
 }
 
 type TabType = 'overview' | 'network' | 'alerts' | 'investigate' | 'entities' | 'transactions' | 'reports';
@@ -66,23 +124,42 @@ const Dashboard = () => {
     };
     
     // Data State
-    const [graphData, setGraphData] = useState<any>({ nodes: [], links: [] });
-    const [stats] = useState<StatsData | null>({
-        total_accounts: 14280,
-        total_transactions: 98450,
-        flagged_networks_blocked: 38,
-        frozen_suspicious_capital: 0
-    });
     const [entityStats, setEntityStats] = useState<Record<string, number>>({});
     const [entityLoading, setEntityLoading] = useState(false);
     const [entityRiskRows, setEntityRiskRows] = useState<EntityRiskRow[]>([]);
     const [entityTableLoading, setEntityTableLoading] = useState(false);
     const [entityTableError, setEntityTableError] = useState<string | null>(null);
     const [entityTableSearch, setEntityTableSearch] = useState('');
-    const [entityRiskFilter, setEntityRiskFilter] = useState<'ALL' | 'LOW' | 'MEDIUM' | 'HIGH' | 'VERY HIGH' | 'CRITICAL'>('ALL');
-    const [entityClassificationFilter, setEntityClassificationFilter] = useState<'ALL' | 'LEGITIMATE' | 'SUSPICIOUS' | 'ANOMALOUS'>('ALL');
-    const [entitySort, setEntitySort] = useState<{ key: 'accountId' | 'probability' | 'riskScore' | 'lastActivity'; direction: 'asc' | 'desc' }>({ key: 'riskScore', direction: 'desc' });
+    type EntityRiskFilterType = 'ALL' | 'LOW' | 'MEDIUM' | 'HIGH' | 'VERY HIGH' | 'CRITICAL';
+    type EntityClassificationFilterType = 'ALL' | 'LEGITIMATE' | 'SUSPICIOUS' | 'ANOMALOUS';
+    type EntitySortKey = 'accountId' | 'probability' | 'riskScore' | 'lastActivity';
+
+    const [entityRiskFilter, setEntityRiskFilter] = useState<EntityRiskFilterType>('ALL');
+    const [entityClassificationFilter, setEntityClassificationFilter] = useState<EntityClassificationFilterType>('ALL');
+    const [entitySort, setEntitySort] = useState<{ key: EntitySortKey; direction: 'asc' | 'desc' }>({ key: 'riskScore', direction: 'desc' });
     const [selectedAccountForInvestigation, setSelectedAccountForInvestigation] = useState<string | null>(accountFromUrl || localStorage.getItem('selected_mule_account'));
+
+    // ==========================================
+    // Real Bitcoin Investigation Graph State (Phase 6)
+    // ==========================================
+    const [realGraphData, setRealGraphData] = useState<{ nodes: GraphNode[]; links: GraphLink[]; meta?: GraphMeta }>({ nodes: [], links: [] });
+    const [isGraphLoading, setIsGraphLoading] = useState(false);
+    const [graphError, setGraphError] = useState<string | null>(null);
+    const [graphStats, setGraphStats] = useState<GraphStatsResponse | null>(null);
+    const [selectedGraphNode, setSelectedGraphNode] = useState<GraphNode | null>(null);
+    const [selectedEntityDetails, setSelectedEntityDetails] = useState<GraphEntityDetails | null>(null);
+    const [selectedAlertDetails, setSelectedAlertDetails] = useState<AlertDetailResponse | null>(null);
+    const [detailsLoading, setDetailsLoading] = useState(false);
+    const [activeCenterEntity, setActiveCenterEntity] = useState<string | null>(null);
+    const [graphHops, setGraphHops] = useState<number>(1);
+    const [copiedAddress, setCopiedAddress] = useState(false);
+
+    // Graph Search State
+    const [graphSearchQuery, setGraphSearchQuery] = useState('');
+    const [graphSearchResults, setGraphSearchResults] = useState<SearchResultItem[]>([]);
+    const [isSearchingGraph, setIsSearchingGraph] = useState(false);
+    const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+    const searchDropdownRef = useRef<HTMLDivElement>(null);
 
     // Graph State
     const [anomalyThreshold, setAnomalyThreshold] = useState<number>(0.75);
@@ -93,114 +170,8 @@ const Dashboard = () => {
     // Test Diagnostics State
     const [testResults, setTestResults] = useState<TestResult[]>([]);
     const [runningTests, setRunningTests] = useState(false);
-    const [verificationStates, setVerificationStates] = useState<Record<string, string>>({});
 
-    // UNIFIED SPHERICAL TOPOLOGY GENERATOR
-    const generateMockData = () => {
-        const nodes: any[] = [];
-        const links: any[] = [];
-        const numNodes = 300;
-        const normHubs: number[] = [];
-        const threatHubs: number[] = [];
-        const coreNodes: number[] = [];
-        const connectionCounts: { [key: string]: number } = {};
 
-        // Invisible Core Node
-        nodes.push({
-            id: 'core',
-            hash: '0x0000000000000000',
-            is_flagged: false,
-            is_core: true,
-            val: 0.1
-        });
-
-        // 5 Core Backbone Nodes
-        for (let i = 0; i < 5; i++) {
-            const id = `node-core-${i}`;
-            nodes.push({
-                id,
-                hash: `1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa-${i}`,
-                is_flagged: false,
-                val: 6
-            });
-            coreNodes.push(i);
-        }
-
-        // Remaining Nodes
-        for (let i = 5; i < numNodes; i++) {
-            const isFlagged = Math.random() < 0.35;
-            const newNode = {
-                id: `node-${i}`,
-                hash: `bc1q${Math.random().toString(36).substring(2, 12)}${Math.random().toString(36).substring(2, 12)}`,
-                is_flagged: isFlagged,
-                val: isFlagged ? 4 : 2
-            };
-            nodes.push(newNode);
-            connectionCounts[newNode.id] = 0;
-
-            if (!isFlagged && normHubs.length < 15) normHubs.push(i);
-            if (isFlagged && threatHubs.length < 8) threatHubs.push(i);
-        }
-        connectionCounts['core'] = 0;
-
-        // Backbone Integration
-        normHubs.forEach(hIdx => {
-            const sourceId = nodes[hIdx].id;
-            const targetId = nodes[coreNodes[Math.floor(Math.random() * coreNodes.length)]].id;
-            links.push({ source: sourceId, target: targetId, is_flagged: false });
-            connectionCounts[sourceId]++;
-            connectionCounts[targetId]++;
-        });
-        threatHubs.forEach(hIdx => {
-            const sourceId = nodes[hIdx].id;
-            const targetId = nodes[coreNodes[Math.floor(Math.random() * coreNodes.length)]].id;
-            links.push({ source: sourceId, target: targetId, is_flagged: true });
-            connectionCounts[sourceId]++;
-            connectionCounts[targetId]++;
-        });
-
-        // Mesh Links
-        for (let i = 5; i < numNodes; i++) {
-            const node = nodes[i];
-            const maxMeshTries = 10;
-            let meshCreated = 0;
-            const targetMeshCount = node.is_flagged ? 2 : 1;
-
-            for (let t = 0; t < maxMeshTries && meshCreated < targetMeshCount; t++) {
-                if (connectionCounts[node.id] >= 4) break;
-
-                const potentialTargetIdx = Math.floor(Math.random() * (numNodes - 5)) + 5;
-                const targetNode = nodes[potentialTargetIdx];
-
-                if (targetNode.id !== node.id && 
-                    targetNode.is_flagged === node.is_flagged && 
-                    connectionCounts[targetNode.id] < 4) {
-                    
-                    links.push({
-                        source: node.id,
-                        target: targetNode.id,
-                        is_flagged: node.is_flagged,
-                        distance: node.is_flagged ? 30 : 120
-                    });
-                    connectionCounts[node.id]++;
-                    connectionCounts[targetNode.id]++;
-                    meshCreated++;
-                }
-            }
-
-            links.push({
-                source: node.id,
-                target: 'core',
-                is_flagged: false,
-                is_tether: true,
-                type: node.is_flagged ? 'core_shell' : 'outer_shell'
-            });
-        }
-
-        return { nodes, links };
-    };
-
-    const memoizedGraphData = useMemo(() => generateMockData(), []);
 
     useEffect(() => {
         const updateDimensions = () => {
@@ -221,22 +192,218 @@ const Dashboard = () => {
         };
     }, [activeTab, sidebarOpen]);
 
+    // ==========================================
+    // Real Bitcoin Graph Operations (Phase 6)
+    // ==========================================
+    const loadGraphStats = async () => {
+        try {
+            const res = await api.getGraphStats();
+            setGraphStats(res);
+            return res;
+        } catch (err) {
+            console.error('Failed to load graph stats:', err);
+            return null;
+        }
+    };
+
+    const loadSubgraph = async (centerEntityId: string, hops = 1, maxNodes = 100) => {
+        setIsGraphLoading(true);
+        setGraphError(null);
+        try {
+            const cleanId = centerEntityId.trim();
+            const subgraph = await api.getEntitySubgraph(cleanId, hops, maxNodes);
+            if (!subgraph || !subgraph.nodes || subgraph.nodes.length === 0) {
+                setGraphError(`No graph neighborhood found for entity '${centerEntityId}'.`);
+            } else {
+                setRealGraphData(subgraph);
+                setActiveCenterEntity(cleanId);
+                setGraphHops(hops);
+                setGraphError(null);
+            }
+        } catch (err: unknown) {
+            console.error('Failed to fetch subgraph:', err);
+            const msg = err instanceof Error ? err.message : String(err || '');
+            if (msg.includes('404')) {
+                setGraphError(`Entity '${centerEntityId}' was not found in the investigation graph.`);
+            } else {
+                setGraphError('Investigation graph unavailable. Start the local NIRIKSHAK backend to load live graph data.');
+            }
+        } finally {
+            setIsGraphLoading(false);
+        }
+    };
+
+    const initializeNetworkGraph = async () => {
+        setIsGraphLoading(true);
+        setGraphError(null);
+        try {
+            const statsRes = await api.getGraphStats();
+            setGraphStats(statsRes);
+
+            if (!statsRes || statsRes.total_nodes === 0) {
+                setRealGraphData({ nodes: [], links: [] });
+                setIsGraphLoading(false);
+                return;
+            }
+
+            // Derive initial bounded graph from top priority Phase 4 alert lead
+            let targetEntityId: string | null = null;
+            try {
+                const leads = await api.getAlerts({ limit: 1 });
+                if (leads && leads.length > 0) {
+                    const topLead = leads[0];
+                    const addr = topLead.wallet_address || topLead.account_id;
+                    if (addr) {
+                        targetEntityId = addr.startsWith('wallet:') ? addr : `wallet:${addr}`;
+                    }
+                }
+            } catch (leadErr) {
+                console.warn('Could not fetch top lead for initial graph:', leadErr);
+            }
+
+            // Deterministic fallback: search for first wallet
+            if (!targetEntityId) {
+                try {
+                    const searchRes = await api.searchGraph('bc1q', 1);
+                    if (searchRes?.results && searchRes.results.length > 0) {
+                        targetEntityId = searchRes.results[0].id;
+                    } else {
+                        const fallbackSearch = await api.searchGraph('1', 1);
+                        if (fallbackSearch?.results && fallbackSearch.results.length > 0) {
+                            targetEntityId = fallbackSearch.results[0].id;
+                        }
+                    }
+                } catch (sErr) {
+                    console.warn('Fallback search failed:', sErr);
+                }
+            }
+
+            if (targetEntityId) {
+                await loadSubgraph(targetEntityId, 1, 100);
+            } else {
+                setGraphError('No graph entities available. Upload or analyze a dataset to compile the Bitcoin investigation graph.');
+            }
+        } catch (err: unknown) {
+            console.error('Failed to initialize investigation graph:', err);
+            setGraphError('Investigation graph unavailable. Start the local NIRIKSHAK backend to load live graph data.');
+        } finally {
+            setIsGraphLoading(false);
+        }
+    };
+
+    const handleNodeClick = async (node: GraphNode) => {
+        if (!node || !node.id) return;
+        const gNode = node;
+        setSelectedGraphNode(gNode);
+        setDetailsLoading(true);
+        setSelectedEntityDetails(null);
+        setSelectedAlertDetails(null);
+
+        // Smooth camera movement towards the clicked node
+        if (fgRef.current && typeof node.x === 'number' && typeof node.y === 'number' && typeof node.z === 'number') {
+            const distance = 90;
+            const hyp = Math.hypot(node.x, node.y, node.z) || 1;
+            const distRatio = 1 + distance / hyp;
+            fgRef.current.cameraPosition(
+                { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+                node,
+                1000
+            );
+        }
+
+        try {
+            const details = await api.getEntityDetails(gNode.id);
+            setSelectedEntityDetails(details);
+
+            const alertId = gNode.alert_id || details?.alert_id;
+            if (alertId) {
+                try {
+                    const alertData = await api.getAlertDetails(alertId);
+                    setSelectedAlertDetails(alertData);
+                } catch (e) {
+                    console.warn('Could not load alert dossier for node:', e);
+                }
+            }
+        } catch (err) {
+            console.error('Failed to load entity details:', err);
+        } finally {
+            setDetailsLoading(false);
+        }
+    };
+
+    const resetGraphFocus = () => {
+        setSelectedGraphNode(null);
+        setSelectedEntityDetails(null);
+        setSelectedAlertDetails(null);
+        if (fgRef.current) {
+            fgRef.current.zoomToFit(1000, 40);
+        }
+    };
+
+    // Graph search debounced effect
+    useEffect(() => {
+        if (!graphSearchQuery.trim()) {
+            setGraphSearchResults([]);
+            setShowSearchDropdown(false);
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            setIsSearchingGraph(true);
+            try {
+                const res = await api.searchGraph(graphSearchQuery.trim(), 10);
+                setGraphSearchResults(res.results || []);
+                setShowSearchDropdown(true);
+            } catch (err) {
+                console.error('Graph search error:', err);
+                setGraphSearchResults([]);
+            } finally {
+                setIsSearchingGraph(false);
+            }
+        }, 250);
+
+        return () => clearTimeout(timer);
+    }, [graphSearchQuery]);
+
+    // Click outside search dropdown
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (searchDropdownRef.current && !searchDropdownRef.current.contains(event.target as Node)) {
+                setShowSearchDropdown(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    // Tab activation trigger
+    useEffect(() => {
+        if (activeTab === 'network') {
+            loadGraphStats();
+            if (realGraphData.nodes.length === 0 && !graphError && !isGraphLoading) {
+                initializeNetworkGraph();
+            }
+        }
+    }, [activeTab]);
+
+    // Force simulation configuration for real graph
     useEffect(() => {
         if (activeTab === 'network' && fgRef.current) {
             try {
                 const linkForce = fgRef.current.d3Force?.('link');
                 if (linkForce && typeof linkForce.distance === 'function') {
-                    linkForce.distance((link: any) => {
-                        if (link?.is_tether) {
-                            return link.type === 'outer_shell' ? 140 : 50;
-                        }
-                        return 15;
+                    linkForce.distance((link: GraphLink | { type?: string }) => {
+                        const type = (link?.type || '').toLowerCase();
+                        if (type === 'counterparty') return 45;
+                        if (type === 'input' || type === 'output') return 30;
+                        if (type === 'network_observation') return 25;
+                        return 35;
                     });
                 }
 
                 const chargeForce = fgRef.current.d3Force?.('charge');
                 if (chargeForce && typeof chargeForce.strength === 'function') {
-                    chargeForce.strength(-60);
+                    chargeForce.strength(-90);
                 }
 
                 const centerForce = fgRef.current.d3Force?.('center');
@@ -245,19 +412,230 @@ const Dashboard = () => {
                 }
 
                 const scene = fgRef.current.scene?.();
-                if (scene && !(scene as any).lights_injected) {
-                    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+                if (scene && !(scene.userData as Record<string, boolean>).lights_injected) {
+                    const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
                     const pointLight = new THREE.PointLight(0xffffff, 1.2);
                     pointLight.position.set(100, 100, 100);
                     scene.add(ambientLight);
                     scene.add(pointLight);
-                    (scene as any).lights_injected = true;
+                    (scene.userData as Record<string, boolean>).lights_injected = true;
                 }
             } catch (err) {
                 console.warn('Unable to configure force simulation:', err);
             }
         }
-    }, [activeTab, memoizedGraphData]);
+    }, [activeTab, realGraphData]);
+
+    // Real graph node 3D renderer
+    const getNodeThreeObject = (node: GraphNode) => {
+        const isSelected = selectedGraphNode?.id === node.id;
+        const type = (node.type || '').toLowerCase();
+        
+        let color = '#00D68F';
+        let radius = 3.5;
+        let emissive = '#00D68F';
+        let emissiveIntensity = 0.3;
+
+        if (type === 'wallet') {
+            const riskLevel = (node.risk_level || '').toUpperCase();
+            const score = typeof node.risk_score === 'number' ? node.risk_score : 0;
+            if (riskLevel === 'CRITICAL' || score >= 80) {
+                color = '#EF4444';
+                radius = isSelected ? 6.5 : 5.0;
+                emissive = '#EF4444';
+                emissiveIntensity = 0.65;
+            } else if (riskLevel === 'HIGH' || score >= 60) {
+                color = '#EA580C';
+                radius = isSelected ? 6.0 : 4.4;
+                emissive = '#EA580C';
+                emissiveIntensity = 0.5;
+            } else if (riskLevel === 'MEDIUM' || score >= 40) {
+                color = '#F59E0B';
+                radius = isSelected ? 5.5 : 3.8;
+                emissive = '#F59E0B';
+                emissiveIntensity = 0.4;
+            } else {
+                color = '#00D68F';
+                radius = isSelected ? 5.0 : 3.5;
+                emissive = '#00D68F';
+                emissiveIntensity = 0.3;
+            }
+        } else if (type === 'transaction' || type === 'tx') {
+            color = '#38BDF8';
+            radius = isSelected ? 5.5 : 3.8;
+            emissive = '#38BDF8';
+            emissiveIntensity = 0.4;
+        } else if (type === 'ip') {
+            color = '#A855F7';
+            radius = isSelected ? 4.5 : 3.2;
+            emissive = '#A855F7';
+            emissiveIntensity = 0.35;
+        } else if (type === 'asn') {
+            color = '#06B6D4';
+            radius = isSelected ? 4.8 : 3.4;
+            emissive = '#06B6D4';
+            emissiveIntensity = 0.35;
+        } else if (type === 'country') {
+            color = '#6366F1';
+            radius = isSelected ? 4.8 : 3.4;
+            emissive = '#6366F1';
+            emissiveIntensity = 0.35;
+        } else {
+            color = '#94A3B8';
+            radius = isSelected ? 4.5 : 3.0;
+            emissive = '#94A3B8';
+            emissiveIntensity = 0.2;
+        }
+
+        const group = new THREE.Group();
+
+        // Base geometry: Sphere for wallet/IP/ASN, Octahedron for transactions
+        let geometry: THREE.BufferGeometry;
+        if (type === 'transaction' || type === 'tx') {
+            geometry = new THREE.OctahedronGeometry(radius);
+        } else if (type === 'ip' || type === 'asn') {
+            geometry = new THREE.DodecahedronGeometry(radius);
+        } else {
+            geometry = new THREE.SphereGeometry(radius, 16, 16);
+        }
+
+        const material = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(color),
+            emissive: new THREE.Color(emissive),
+            emissiveIntensity: emissiveIntensity,
+            roughness: 0.3,
+            metalness: 0.2,
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        group.add(mesh);
+
+        // Selection or High Risk Halo
+        const isHighOrCritical = (node.risk_level === 'CRITICAL' || node.risk_level === 'HIGH' || (node.risk_score && node.risk_score >= 60));
+        if (isSelected || isHighOrCritical) {
+            const haloGeo = new THREE.RingGeometry(radius * 1.3, radius * 1.6, 24);
+            const haloMat = new THREE.MeshBasicMaterial({
+                color: new THREE.Color(isSelected ? '#38BDF8' : color),
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: isSelected ? 0.8 : 0.45,
+            });
+            const halo = new THREE.Mesh(haloGeo, haloMat);
+            group.add(halo);
+        }
+
+        // Subdued label sprite for selected or high-risk nodes
+        if (isSelected || isHighOrCritical) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                canvas.width = 256;
+                canvas.height = 64;
+                ctx.font = 'Bold 20px monospace';
+                ctx.fillStyle = isSelected ? '#FFFFFF' : '#CBD5E1';
+                const labelText = (node.label || node.id || '').substring(0, 16);
+                ctx.fillText(labelText, 10, 38);
+
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.9 });
+                const sprite = new THREE.Sprite(spriteMat);
+                sprite.scale.set(24, 6, 1);
+                sprite.position.set(0, radius + 5, 0);
+                group.add(sprite);
+            }
+        }
+
+        return group;
+    };
+
+    const getLinkColor = (link: GraphLink | { source?: unknown; target?: unknown; type?: string }) => {
+        const type = (link?.type || '').toLowerCase();
+        const src = typeof link.source === 'object' && link.source !== null ? (link.source as GraphNode) : null;
+        const tgt = typeof link.target === 'object' && link.target !== null ? (link.target as GraphNode) : null;
+        const isCritical = (src?.risk_level === 'CRITICAL' || tgt?.risk_level === 'CRITICAL');
+        const isHigh = (src?.risk_level === 'HIGH' || tgt?.risk_level === 'HIGH');
+
+        if (type === 'counterparty') {
+            if (isCritical || isHigh) return 'rgba(234, 88, 12, 0.75)';
+            return 'rgba(0, 214, 143, 0.25)';
+        }
+        if (type === 'input') return 'rgba(0, 214, 143, 0.35)';
+        if (type === 'output') return 'rgba(16, 185, 129, 0.35)';
+        if (type === 'network_observation') return 'rgba(168, 85, 247, 0.28)';
+        return 'rgba(148, 163, 184, 0.2)';
+    };
+
+    const getLinkWidth = (link: GraphLink | { source?: unknown; target?: unknown; type?: string }) => {
+        const type = (link?.type || '').toLowerCase();
+        const src = typeof link.source === 'object' && link.source !== null ? (link.source as GraphNode) : null;
+        const tgt = typeof link.target === 'object' && link.target !== null ? (link.target as GraphNode) : null;
+        const isCritical = (src?.risk_level === 'CRITICAL' || tgt?.risk_level === 'CRITICAL');
+        if (type === 'counterparty' && isCritical) return 2.2;
+        if (type === 'input' || type === 'output') return 1.5;
+        return 1.1;
+    };
+
+    const getLinkParticles = (link: GraphLink | { type?: string }) => {
+        const type = (link?.type || '').toLowerCase();
+        if (type === 'counterparty' || type === 'input' || type === 'output') return 2;
+        return 0;
+    };
+
+    const getLinkParticleColor = (link: GraphLink | { source?: unknown; target?: unknown; type?: string }) => {
+        const type = (link?.type || '').toLowerCase();
+        const src = typeof link.source === 'object' && link.source !== null ? (link.source as GraphNode) : null;
+        const tgt = typeof link.target === 'object' && link.target !== null ? (link.target as GraphNode) : null;
+        if (type === 'counterparty' && (src?.risk_level === 'CRITICAL' || tgt?.risk_level === 'CRITICAL')) {
+            return '#EF4444';
+        }
+        if (type === 'counterparty' && (src?.risk_level === 'HIGH' || tgt?.risk_level === 'HIGH')) {
+            return '#EA580C';
+        }
+        return '#00D68F';
+    };
+
+    const getNodeLabel = (node: GraphNode) => {
+        const type = (node.type || 'unknown').toUpperCase();
+        const label = node.label || node.id || '';
+        const shortLabel = label.length > 24 ? `${label.substring(0, 10)}...${label.substring(label.length - 8)}` : label;
+        const riskLevel = node.risk_level ? String(node.risk_level).toUpperCase() : null;
+        const riskScore = typeof node.risk_score === 'number' ? node.risk_score.toFixed(1) : null;
+        const anomalyScore = typeof node.anomaly_score === 'number' ? node.anomaly_score.toFixed(2) : null;
+        
+        let badgeColor = '#94A3B8';
+        if (riskLevel === 'CRITICAL') badgeColor = '#EF4444';
+        else if (riskLevel === 'HIGH') badgeColor = '#EA580C';
+        else if (riskLevel === 'MEDIUM') badgeColor = '#F59E0B';
+        else if (riskLevel === 'LOW') badgeColor = '#00D68F';
+        else if (type === 'TRANSACTION' || type === 'TX') badgeColor = '#38BDF8';
+        else if (type === 'IP') badgeColor = '#A855F7';
+        else if (type === 'ASN') badgeColor = '#06B6D4';
+        else if (type === 'COUNTRY') badgeColor = '#6366F1';
+
+        return `
+        <div style="background: rgba(11, 11, 18, 0.95); border: 1px solid rgba(255, 255, 255, 0.15); padding: 8px 12px; border-radius: 8px; font-family: Inter, sans-serif; backdrop-filter: blur(6px); min-width: 170px; color: #fff; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 9px; font-weight: 800; color: ${badgeColor}; letter-spacing: 0.1em;">${type}</span>
+                ${riskLevel ? `<span style="font-size: 9px; font-weight: 800; background: ${badgeColor}22; color: ${badgeColor}; padding: 2px 6px; border-radius: 4px;">${riskLevel}</span>` : ''}
+            </div>
+            <div style="font-family: monospace; font-size: 12px; font-weight: 600; color: #F1F5F9; word-break: break-all;">${shortLabel}</div>
+            ${riskScore !== null ? `
+                <div style="height: 1px; background: rgba(255,255,255,0.08); margin: 6px 0;"></div>
+                <div style="display: flex; justify-content: space-between; font-size: 10px; color: #94A3B8;">
+                    <span>Risk Score:</span>
+                    <span style="font-weight: 700; color: ${badgeColor};">${riskScore} / 100</span>
+                </div>
+            ` : ''}
+            ${anomalyScore !== null ? `
+                <div style="display: flex; justify-content: space-between; font-size: 10px; color: #94A3B8; margin-top: 2px;">
+                    <span>Anomaly:</span>
+                    <span style="font-weight: 700; color: #F1F5F9;">${anomalyScore}</span>
+                </div>
+            ` : ''}
+            <div style="margin-top: 6px; font-size: 9px; color: #64748B; text-align: right;">Click to inspect entity</div>
+        </div>
+        `;
+    };
 
     const runDiagnostics = async () => {
         setRunningTests(true);
@@ -290,7 +668,6 @@ const Dashboard = () => {
 
     const fetchData = async (isInitial = false) => {
         try {
-            setGraphData(memoizedGraphData);
             try {
                 if (isInitial) setEntityLoading(true);
                 const response = await api.getMuleStats();
@@ -312,7 +689,6 @@ const Dashboard = () => {
             }
         } catch (error) {
             console.error(error);
-            setGraphData(memoizedGraphData);
         }
     };
 
@@ -397,10 +773,27 @@ const Dashboard = () => {
         navigate('/');
     };
 
-    const filteredGraphData = {
-        nodes: graphData.nodes.filter((n: any) => n.is_flagged || anomalyThreshold < 0.95),
-        links: graphData.links.filter((l: any) => l.is_flagged || anomalyThreshold < 0.95)
-    };
+    const filteredGraphData = useMemo(() => {
+        if (!realGraphData.nodes.length) return { nodes: [], links: [] };
+
+        if (anomalyThreshold >= 0.90) {
+            const highRiskIds = new Set(
+                realGraphData.nodes
+                    .filter(n => n.type !== 'wallet' || (n.risk_score && n.risk_score >= 50) || n.is_outlier)
+                    .map(n => n.id)
+            );
+            return {
+                nodes: realGraphData.nodes.filter(n => highRiskIds.has(n.id)),
+                links: realGraphData.links.filter(l => {
+                    const sId = typeof l.source === 'object' && l.source !== null ? (l.source as GraphNode).id : String(l.source);
+                    const tId = typeof l.target === 'object' && l.target !== null ? (l.target as GraphNode).id : String(l.target);
+                    return highRiskIds.has(sId) && highRiskIds.has(tId);
+                })
+            };
+        }
+
+        return realGraphData;
+    }, [realGraphData, anomalyThreshold]);
 
     return (
         <div className="flex h-screen bg-[#F8FAFC] text-[#1e293b] font-sans overflow-hidden">
@@ -664,14 +1057,25 @@ const Dashboard = () => {
                     {/* VIEW: NETWORK GRAPH */}
                     {activeTab === 'network' && (
                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 h-full">
-                            <div className="flex flex-col md:flex-row gap-6 mb-8">
+                            {/* REAL METRICS STATS BAR */}
+                            <div className="flex flex-col md:flex-row gap-6 mb-6">
                                 <div className="bg-white p-6 rounded-3xl shadow-[0_6px_32px_rgba(147,111,173,0.12)] border border-slate-200 flex-grow border-l-8 border-emerald-600 transition-all duration-300 hover:shadow-[0_8px_40px_rgba(147,111,173,0.20)] group">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Network Entities</p>
-                                    <h3 className="text-4xl font-black text-[#002A24]">{stats?.total_accounts || 14280}</h3>
+                                    <h3 className="text-4xl font-black text-[#002A24]">
+                                        {graphStats ? graphStats.total_nodes.toLocaleString() : <span className="animate-pulse">...</span>}
+                                    </h3>
+                                    <p className="text-[11px] font-mono text-slate-500 mt-2">
+                                        {graphStats ? `${graphStats.wallet_nodes.toLocaleString()} Wallets • ${graphStats.transaction_nodes.toLocaleString()} Transactions` : 'Querying graph topology...'}
+                                    </p>
                                 </div>
                                 <div className="bg-white p-6 rounded-3xl shadow-[0_6px_32px_rgba(147,111,173,0.12)] border border-slate-200 flex-grow border-l-8 border-[#FF4F00] transition-all duration-300 hover:shadow-[0_8px_40px_rgba(147,111,173,0.20)] group">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Anomalous Clusters</p>
-                                    <h3 className="text-4xl font-black text-[#FF4F00]">{stats?.flagged_networks_blocked || 38}</h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Investigative Graph Edges</p>
+                                    <h3 className="text-4xl font-black text-[#FF4F00]">
+                                        {graphStats ? graphStats.total_edges.toLocaleString() : <span className="animate-pulse">...</span>}
+                                    </h3>
+                                    <p className="text-[11px] font-mono text-slate-500 mt-2">
+                                        {graphStats ? `${graphStats.counterparty_edges.toLocaleString()} Counterparty • ${graphStats.network_observation_edges.toLocaleString()} Net Observations` : 'Mapping Bitcoin relationships...'}
+                                    </p>
                                 </div>
                                 <div className="bg-[#002A24] p-6 rounded-3xl shadow-xl flex-[2] flex flex-col justify-center">
                                     <div className="flex justify-between mb-2">
@@ -683,100 +1087,393 @@ const Dashboard = () => {
                                         onChange={(e) => setAnomalyThreshold(parseFloat(e.target.value))}
                                         className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#FF4F00]"
                                     />
+                                    <div className="flex justify-between mt-2 text-[9px] font-mono text-slate-400">
+                                        <span>Show All Bounded</span>
+                                        <span>Filter High-Risk Only</span>
+                                    </div>
                                 </div>
                             </div>
 
-                             <div 
-                                className="w-full h-[60vh] bg-[#001c18] rounded-[40px] relative overflow-hidden shadow-2xl border-8 border-white group"
+                            {/* GRAPH SEARCH & CONTROL TOOLBAR */}
+                            <div className="relative mb-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                                <div className="relative w-full sm:w-96" ref={searchDropdownRef}>
+                                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                    <input
+                                        value={graphSearchQuery}
+                                        onChange={(e) => setGraphSearchQuery(e.target.value)}
+                                        placeholder="Search wallet (bc1q...), TXID, IP, ASN..."
+                                        className="w-full bg-slate-50 border border-slate-200 focus:border-[#FF4F00] rounded-xl pl-9 pr-8 py-2 text-xs font-mono text-[#002A24] outline-none"
+                                    />
+                                    {isSearchingGraph ? (
+                                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                                            <Loader2 className="w-3.5 h-3.5 text-emerald-500 animate-spin" />
+                                        </div>
+                                    ) : graphSearchQuery ? (
+                                        <button 
+                                            onClick={() => setGraphSearchQuery('')} 
+                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    ) : null}
+                                    {showSearchDropdown && graphSearchResults.length > 0 && (
+                                        <div className="absolute top-full left-0 right-0 mt-2 bg-[#001411] border border-white/20 rounded-2xl shadow-2xl overflow-hidden z-50 max-h-72 overflow-y-auto">
+                                            <div className="p-2.5 text-[9px] font-mono text-emerald-400 uppercase tracking-widest border-b border-white/10 flex justify-between">
+                                                <span>Discovered Entities</span>
+                                                <span>{graphSearchResults.length} matches</span>
+                                            </div>
+                                            {graphSearchResults.map((res) => (
+                                                <div
+                                                    key={res.id}
+                                                    onClick={() => {
+                                                        setShowSearchDropdown(false);
+                                                        setGraphSearchQuery('');
+                                                        loadSubgraph(res.id, 1, 100);
+                                                    }}
+                                                    className="p-3 hover:bg-white/10 cursor-pointer border-b border-white/5 flex items-center justify-between transition-colors"
+                                                >
+                                                    <div className="overflow-hidden mr-2">
+                                                        <span className="text-[9px] font-black uppercase text-emerald-400 block tracking-wider">{res.type}</span>
+                                                        <span className="text-xs font-mono text-white truncate block">{res.label}</span>
+                                                    </div>
+                                                    {res.risk_level && (
+                                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
+                                                            res.risk_level === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/40' :
+                                                            res.risk_level === 'HIGH' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' :
+                                                            res.risk_level === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' :
+                                                            'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                                        }`}>
+                                                            {res.risk_level}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Depth:</span>
+                                    <div className="flex items-center bg-slate-100 p-1 rounded-xl">
+                                        {[1, 2, 3].map((h) => (
+                                            <button
+                                                key={h}
+                                                onClick={() => {
+                                                    setGraphHops(h);
+                                                    if (activeCenterEntity) loadSubgraph(activeCenterEntity, h, 100);
+                                                }}
+                                                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                                                    graphHops === h ? 'bg-[#002A24] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                                                }`}
+                                            >
+                                                {h}-Hop
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            if (activeCenterEntity) loadSubgraph(activeCenterEntity, graphHops, 100);
+                                            else initializeNetworkGraph();
+                                        }}
+                                        title="Reload Subgraph"
+                                        className="p-2 text-slate-500 hover:text-[#002A24] hover:bg-slate-100 rounded-xl transition-all"
+                                    >
+                                        <RefreshCw className={`w-4 h-4 ${isGraphLoading ? 'animate-spin text-emerald-600' : ''}`} />
+                                    </button>
+                                    <button
+                                        onClick={resetGraphFocus}
+                                        title="Reset Camera View"
+                                        className="p-2 text-slate-500 hover:text-[#002A24] hover:bg-slate-100 rounded-xl transition-all"
+                                    >
+                                        <Crosshair className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* 3D FORCE GRAPH CANVAS */}
+                            <div 
+                                className="w-full h-[65vh] bg-[#001c18] rounded-[40px] relative overflow-hidden shadow-2xl border-8 border-white group"
                                 ref={graphContainerRef}
                             >
-                                <ForceGraph3D
-                                    ref={fgRef}
-                                    width={graphDimensions.width > 0 ? graphDimensions.width : undefined}
-                                    height={graphDimensions.height > 0 ? graphDimensions.height : undefined}
-                                    graphData={filteredGraphData}
-                                    backgroundColor="#0B0B12"
-                                    nodeThreeObject={(node: any) => {
-                                        if (node.is_core) return new THREE.Object3D();
-                                        
-                                        const geometry = new THREE.SphereGeometry(node.val || 4, 8, 8);
-                                        const material = new THREE.MeshLambertMaterial({
-                                            color: node.is_flagged ? '#ea580c' : '#00D68F',
-                                            emissive: node.is_flagged ? '#ea580c' : '#00D68F',
-                                            emissiveIntensity: 0.4,
-                                            transparent: true,
-                                            opacity: 0.9
-                                        });
-                                        return new THREE.Mesh(geometry, material);
-                                    }}
-                                    nodeOpacity={0.9}
-                                    nodeLabel={node => {
-                                        if ((node as any).is_core) return '';
-                                        const vState = verificationStates[(node as any).id];
-                                        return `
-                                        <div style="background: rgba(11, 11, 18, 0.9); border: 1px solid ${(node as any).is_flagged ? '#ea580c' : 'rgba(185, 185, 199, 0.2)'}; padding: 8px 12px; border-radius: 8px; font-family: Inter, sans-serif; backdrop-filter: blur(4px); min-width: 160px;">
-                                            <div style="color: #B9B9C7; font-size: 11px; margin-bottom: 4px; display: flex; justify-content: space-between;">
-                                                <span>ENTITY HASH</span>
-                                                ${(node as any).is_flagged ? '<span style="color: #ea580c; font-weight: bold;">[!] ANOMALY</span>' : ''}
-                                            </div>
-                                            <div style="color: #FFF; font-size: 13px; font-family: monospace;">${(node as any).hash || (node as any).id}</div>
-                                            
-                                            <div style="height: 1px; background: rgba(255,255,255,0.05); margin: 8px 0;"></div>
-                                            
-                                            <div style="color: ${(node as any).is_flagged ? '#ea580c' : '#00D68F'}; font-size: 12px; font-weight: bold;">
-                                                STATUS: ${(node as any).is_flagged ? 'HIGH ANOMALY' : 'SECURE'}
-                                            </div>
-
-                                            ${(node as any).is_flagged ? `
-                                                <div style="margin-top: 8px; padding: 6px; background: rgba(0,0,0,0.3); border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                                                    <div style="font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 2px;">ML Graph Analysis</div>
-                                                    <div style="font-size: 10px; color: ${vState === 'verified' ? '#00D68F' : vState === 'pending' ? '#FFAD66' : '#555'}; font-weight: 800;">
-                                                        ${vState === 'verified' ? '✓ ANALYZED BY ML CLUSTER' : vState === 'pending' ? '⟳ SYNCING GRAPH...' : 'CLICK TO AUDIT'}
-                                                    </div>
-                                                </div>
-                                            ` : ''}
+                                {isWebGLAvailable() ? (
+                                    <GraphErrorBoundary fallbackNodesCount={realGraphData.nodes.length} fallbackLinksCount={realGraphData.links.length}>
+                                        <ForceGraph3D
+                                            ref={fgRef}
+                                            width={graphDimensions.width > 0 ? graphDimensions.width : undefined}
+                                            height={graphDimensions.height > 0 ? graphDimensions.height : undefined}
+                                            graphData={filteredGraphData}
+                                            backgroundColor="#0B0B12"
+                                            nodeThreeObject={getNodeThreeObject}
+                                            nodeOpacity={0.95}
+                                            nodeLabel={getNodeLabel}
+                                            onNodeClick={handleNodeClick}
+                                            linkColor={getLinkColor}
+                                            linkWidth={getLinkWidth}
+                                            linkDirectionalParticles={getLinkParticles}
+                                            linkDirectionalParticleWidth={2.4}
+                                            linkDirectionalParticleSpeed={0.006}
+                                            linkDirectionalParticleColor={getLinkParticleColor}
+                                            enableNodeDrag={false}
+                                            showNavInfo={false}
+                                            cooldownTicks={120}
+                                        />
+                                    </GraphErrorBoundary>
+                                ) : (
+                                    <div className="absolute inset-0 bg-[#0B0B12] flex flex-col items-center justify-center p-6 text-center z-10">
+                                        <AlertTriangle className="w-12 h-12 text-amber-400 mb-3" />
+                                        <h4 className="text-sm font-black text-white uppercase tracking-wider mb-1">WebGL Acceleration Required</h4>
+                                        <p className="text-xs text-slate-400 max-w-md mb-4 leading-relaxed">
+                                            WebGL 3D graphics context is disabled or unavailable in this browser session. Enable WebGL in your browser settings to interact with the 3D Bitcoin network graph.
+                                        </p>
+                                        <div className="p-3 bg-black/40 border border-white/10 rounded-xl font-mono text-[11px] text-emerald-400">
+                                            Backend Graph: {realGraphData.nodes.length} Subgraph Nodes • {realGraphData.links.length} Edges Loaded
                                         </div>
-                                    `;}}
-                                    onNodeClick={(node: any) => {
-                                        if (!node.is_flagged) return; 
-                                        if (verificationStates[node.id]) return;
+                                    </div>
+                                )}
 
-                                        setVerificationStates(prev => ({ ...prev, [node.id]: 'pending' }));
-                                        
-                                        setTimeout(() => {
-                                            setVerificationStates(prev => ({ ...prev, [node.id]: 'verified' }));
-                                        }, 1500);
-                                    }}
-                                    linkColor={(link: any) => {
-                                        if (link?.is_tether) return 'rgba(0,0,0,0)';
-                                        return (link?.source?.is_flagged && link?.target?.is_flagged) ? 'rgba(234, 88, 12, 0.8)' : 'rgba(0, 214, 143, 0.15)';
-                                    }}
-                                    linkWidth={(link: any) => {
-                                        if (link?.is_tether) return 0;
-                                        return (link?.source?.is_flagged && link?.target?.is_flagged) ? 2.5 : 1.2;
-                                    }}
-                                    linkDirectionalParticles={2}
-                                    linkDirectionalParticleWidth={(link: any) => link?.is_tether ? 0 : 3}
-                                    linkDirectionalParticleSpeed={0.006}
-                                    linkDirectionalParticleColor={(link: any) => link?.is_flagged ? '#ea580c' : '#00D68F'}
-                                    enableNodeDrag={false}
-                                    showNavInfo={false}
-                                    cooldownTicks={150}
-                                />
-
-                                <div className="absolute top-8 left-8 p-4 bg-[#001411]/80 backdrop-blur-xl rounded-2xl border border-white/10 text-white pointer-events-none group-hover:scale-105 transition-transform duration-500">
+                                {/* TOPOLOGY BADGE OVERLAY */}
+                                <div className="absolute top-6 left-6 p-4 bg-[#001411]/85 backdrop-blur-xl rounded-2xl border border-white/10 text-white pointer-events-none transition-transform duration-300">
                                     <div className="flex items-center space-x-3">
                                         <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse border-2 border-white/20"></div>
                                         <div>
-                                            <span className="text-[10px] font-black font-mono tracking-widest uppercase block opacity-80">Nirikshak Network Topology</span>
-                                            <span className="text-[8px] font-mono opacity-50">HEURISTIC OVERLAY ACTIVE</span>
+                                            <span className="text-[10px] font-black font-mono tracking-widest uppercase block opacity-90">Nirikshak Topology</span>
+                                            <span className="text-[8px] font-mono text-emerald-400">PHASE 5 ANALYTICAL GRAPH ACTIVE</span>
                                         </div>
                                     </div>
-                                    <div className="mt-4 pt-4 border-t border-white/5 space-y-1">
-                                        <p className="text-[10px] font-bold text-emerald-400/80 uppercase tracking-tighter">Total Analyzed Entities: 14,000+</p>
-                                        <p className="text-[10px] font-bold text-white/60 uppercase tracking-tighter italic">Rendered Graph Subgraph: {graphData.nodes?.length || 0} Nodes</p>
+                                    <div className="mt-3 pt-3 border-t border-white/10 space-y-1">
+                                        <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-tighter">
+                                            Investigation Graph: {graphStats ? graphStats.total_nodes.toLocaleString() : '...'} Entities • {graphStats ? graphStats.total_edges.toLocaleString() : '...'} Edges
+                                        </p>
+                                        <p className="text-[10px] font-bold text-white/70 uppercase tracking-tighter">
+                                            Rendered Subgraph: {realGraphData.nodes.length} Nodes • {realGraphData.links.length} Edges ({graphHops}-Hop Bounded)
+                                        </p>
+                                        {activeCenterEntity && (
+                                            <p className="text-[9px] font-mono text-slate-400 truncate max-w-xs">
+                                                Center: {activeCenterEntity}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
+
+                                {/* LOADING STATE OVERLAY */}
+                                {isGraphLoading && (
+                                    <div className="absolute inset-0 bg-[#0B0B12]/80 backdrop-blur-md flex flex-col items-center justify-center z-30">
+                                        <div className="p-6 bg-[#002A24]/90 border border-white/10 rounded-3xl flex flex-col items-center shadow-2xl text-center">
+                                            <Loader2 className="w-10 h-10 text-emerald-400 animate-spin mb-4" />
+                                            <h4 className="text-sm font-black text-white uppercase tracking-widest mb-1">Loading Investigation Subgraph</h4>
+                                            <p className="text-xs text-slate-400 font-medium">Extracting bounded Bitcoin topology from local analytical graph...</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ERROR STATE OVERLAY */}
+                                {graphError && !isGraphLoading && (
+                                    <div className="absolute inset-0 bg-[#0B0B12]/85 backdrop-blur-md flex flex-col items-center justify-center z-30 p-6">
+                                        <div className="max-w-md p-8 bg-[#002A24]/95 border border-red-500/30 rounded-3xl flex flex-col items-center text-center shadow-2xl">
+                                            <AlertTriangle className="w-12 h-12 text-red-400 mb-4" />
+                                            <h4 className="text-base font-black text-white uppercase tracking-widest mb-2">Investigation Graph Unavailable</h4>
+                                            <p className="text-xs text-slate-300 mb-6 leading-relaxed">{graphError}</p>
+                                            <button
+                                                onClick={() => initializeNetworkGraph()}
+                                                className="px-6 py-3 bg-[#FF4F00] hover:bg-[#e04500] text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-lg"
+                                            >
+                                                Retry Connection
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* EMPTY STATE OVERLAY */}
+                                {!isGraphLoading && !graphError && realGraphData.nodes.length === 0 && (
+                                    <div className="absolute inset-0 bg-[#0B0B12]/85 backdrop-blur-md flex flex-col items-center justify-center z-30 p-6">
+                                        <div className="max-w-md p-8 bg-[#002A24]/95 border border-white/10 rounded-3xl flex flex-col items-center text-center shadow-2xl">
+                                            <Network className="w-12 h-12 text-slate-500 mb-4" />
+                                            <h4 className="text-base font-black text-white uppercase tracking-widest mb-2">No Graph Data Available</h4>
+                                            <p className="text-xs text-slate-300 mb-6 leading-relaxed">
+                                                The Bitcoin investigation graph contains 0 entities. Upload and normalize a transaction dataset to compile the multi-layer graph.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* SELECTED ENTITY INVESTIGATION DRAWER / PANEL */}
+                                {selectedGraphNode && (
+                                    <div className="absolute top-6 right-6 w-96 max-h-[calc(100%-3rem)] bg-[#001411]/95 backdrop-blur-2xl border border-white/15 rounded-3xl shadow-2xl overflow-hidden flex flex-col z-20 text-white animate-in slide-in-from-right-4 duration-300">
+                                        {/* Panel Header */}
+                                        <div className="p-5 border-b border-white/10 flex items-center justify-between bg-black/20">
+                                            <div className="flex items-center space-x-2">
+                                                <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${
+                                                    selectedGraphNode.type === 'wallet' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                                                    selectedGraphNode.type === 'transaction' || selectedGraphNode.type === 'tx' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' :
+                                                    selectedGraphNode.type === 'ip' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+                                                    'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                                                }`}>
+                                                    {selectedGraphNode.type}
+                                                </span>
+                                                {selectedGraphNode.risk_level && (
+                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${
+                                                        selectedGraphNode.risk_level === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                                                        selectedGraphNode.risk_level === 'HIGH' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' :
+                                                        selectedGraphNode.risk_level === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                                                        'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                                    }`}>
+                                                        {selectedGraphNode.risk_level} RISK
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={() => setSelectedGraphNode(null)}
+                                                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+
+                                        {/* Content area */}
+                                        <div className="p-5 overflow-y-auto space-y-4 text-xs">
+                                            <div>
+                                                <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase tracking-widest font-mono mb-1">
+                                                    <span>Identifier</span>
+                                                    <button
+                                                        onClick={() => {
+                                                            navigator.clipboard?.writeText(selectedGraphNode.label || selectedGraphNode.id);
+                                                            setCopiedAddress(true);
+                                                            setTimeout(() => setCopiedAddress(false), 2000);
+                                                        }}
+                                                        className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                                                    >
+                                                        {copiedAddress ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                                        <span>{copiedAddress ? 'COPIED' : 'COPY'}</span>
+                                                    </button>
+                                                </div>
+                                                <div className="font-mono text-xs text-white bg-black/40 p-2.5 rounded-xl border border-white/5 break-all">
+                                                    {selectedGraphNode.label || selectedGraphNode.id}
+                                                </div>
+                                            </div>
+
+                                            {/* Risk Score Progress Bar */}
+                                            {typeof selectedGraphNode.risk_score === 'number' && (
+                                                <div className="p-3 bg-black/30 rounded-xl border border-white/5">
+                                                    <div className="flex justify-between items-center mb-1.5 font-mono text-[10px]">
+                                                        <span className="text-slate-400 uppercase">Composite Risk Score</span>
+                                                        <span className="font-black text-white">{selectedGraphNode.risk_score.toFixed(1)} / 100</span>
+                                                    </div>
+                                                    <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                                                        <div
+                                                            className={`h-full rounded-full ${
+                                                                selectedGraphNode.risk_score >= 80 ? 'bg-red-500' :
+                                                                selectedGraphNode.risk_score >= 60 ? 'bg-orange-500' :
+                                                                selectedGraphNode.risk_score >= 40 ? 'bg-amber-500' :
+                                                                'bg-emerald-500'
+                                                            }`}
+                                                            style={{ width: `${Math.min(100, Math.max(0, selectedGraphNode.risk_score))}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Details Grid */}
+                                            {detailsLoading ? (
+                                                <div className="py-6 flex flex-col items-center justify-center text-slate-400">
+                                                    <Loader2 className="w-6 h-6 animate-spin mb-2" />
+                                                    <span className="text-[10px] font-mono">Loading entity attributes...</span>
+                                                </div>
+                                            ) : selectedEntityDetails ? (
+                                                <div className="space-y-3">
+                                                    <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
+                                                        <div className="bg-white/5 p-2 rounded-lg">
+                                                            <span className="text-[9px] text-slate-400 block uppercase">In-Degree</span>
+                                                            <span className="font-bold text-white">{selectedEntityDetails.in_degree}</span>
+                                                        </div>
+                                                        <div className="bg-white/5 p-2 rounded-lg">
+                                                            <span className="text-[9px] text-slate-400 block uppercase">Out-Degree</span>
+                                                            <span className="font-bold text-white">{selectedEntityDetails.out_degree}</span>
+                                                        </div>
+                                                        {selectedEntityDetails.attributes?.transaction_count !== undefined && (
+                                                            <div className="bg-white/5 p-2 rounded-lg">
+                                                                <span className="text-[9px] text-slate-400 block uppercase">Total TXs</span>
+                                                                <span className="font-bold text-emerald-400">{String(selectedEntityDetails.attributes.transaction_count)}</span>
+                                                            </div>
+                                                        )}
+                                                        {selectedEntityDetails.attributes?.total_output_amount !== undefined && (
+                                                            <div className="bg-white/5 p-2 rounded-lg">
+                                                                <span className="text-[9px] text-slate-400 block uppercase">Volume Output</span>
+                                                                <span className="font-bold text-white">{Number(selectedEntityDetails.attributes.total_output_amount).toFixed(4)} BTC</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Why Flagged Integration */}
+                                                    {selectedAlertDetails && (
+                                                        <div className="p-3 bg-red-950/30 border border-red-500/20 rounded-xl space-y-2">
+                                                            <div className="flex items-center space-x-2">
+                                                                <ShieldAlert className="w-4 h-4 text-red-400" />
+                                                                <span className="text-[10px] font-black uppercase text-red-400 tracking-wider">Why Flagged (Phase 4 AI)</span>
+                                                            </div>
+                                                            <div className="grid grid-cols-4 gap-1 text-[9px] font-mono text-center">
+                                                                <div className="bg-black/40 p-1 rounded">
+                                                                    <div className="text-slate-400">ANOMALY</div>
+                                                                    <div className="font-bold text-red-400">{selectedAlertDetails.subscores?.anomaly?.toFixed(0) ?? '—'}</div>
+                                                                </div>
+                                                                <div className="bg-black/40 p-1 rounded">
+                                                                    <div className="text-slate-400">ACTIVITY</div>
+                                                                    <div className="font-bold text-orange-400">{selectedAlertDetails.subscores?.activity?.toFixed(0) ?? '—'}</div>
+                                                                </div>
+                                                                <div className="bg-black/40 p-1 rounded">
+                                                                    <div className="text-slate-400">NETWORK</div>
+                                                                    <div className="font-bold text-amber-400">{selectedAlertDetails.subscores?.network?.toFixed(0) ?? '—'}</div>
+                                                                </div>
+                                                                <div className="bg-black/40 p-1 rounded">
+                                                                    <div className="text-slate-400">BEHAVIOR</div>
+                                                                    <div className="font-bold text-emerald-400">{selectedAlertDetails.subscores?.behavior?.toFixed(0) ?? '—'}</div>
+                                                                </div>
+                                                            </div>
+                                                            {selectedAlertDetails.reasons && selectedAlertDetails.reasons.length > 0 && (
+                                                                <div className="space-y-1 pt-1">
+                                                                    {selectedAlertDetails.reasons.slice(0, 3).map((r, rIdx) => (
+                                                                        <div key={rIdx} className="text-[10px] text-slate-300 bg-black/30 p-2 rounded border border-white/5 leading-relaxed">
+                                                                            {r.explanation}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : null}
+
+                                            {/* Action Buttons */}
+                                            <div className="pt-2 border-t border-white/10 space-y-2">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <button
+                                                        onClick={() => loadSubgraph(selectedGraphNode.id, 1, 100)}
+                                                        className="py-2.5 px-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors"
+                                                    >
+                                                        Expand 1-Hop
+                                                    </button>
+                                                    <button
+                                                        onClick={() => loadSubgraph(selectedGraphNode.id, 2, 100)}
+                                                        className="py-2.5 px-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors"
+                                                    >
+                                                        Expand 2-Hop
+                                                    </button>
+                                                </div>
+                                                {selectedGraphNode.type === 'wallet' && (
+                                                    <button
+                                                        onClick={() => {
+                                                            const cleanAddr = selectedGraphNode.label.replace(/^wallet:/, '');
+                                                            setSelectedAccountForInvestigation(cleanAddr);
+                                                            setActiveTab('investigate');
+                                                        }}
+                                                        className="w-full py-2.5 px-3 bg-[#FF4F00] hover:bg-[#e04500] text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors shadow-lg"
+                                                    >
+                                                        <span>Deep Lead Investigation</span>
+                                                        <ExternalLink className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="mt-8">
@@ -795,7 +1492,7 @@ const Dashboard = () => {
                                         </div>
                                         <h2 className="text-2xl font-black text-white mb-2">Isolated Threat Topology Analysis</h2>
                                         <p className="text-[#B9B9C7] text-xs font-medium leading-relaxed">
-                                            The Graph Anomaly Engine has identified 15 suspect wallet clusters exhibiting rapid value splitting and multi-hop layering. Investigative lead generated.
+                                            The Nirikshak AI Graph Engine has mapped {graphStats ? graphStats.wallet_nodes.toLocaleString() : 'thousands of'} wallet nodes across {graphStats ? graphStats.total_edges.toLocaleString() : 'tens of thousands of'} transactional links. Multi-layer anomaly heuristics and clustering active.
                                         </p>
                                     </div>
 
@@ -850,7 +1547,7 @@ const Dashboard = () => {
 
                                         <select
                                             value={entityRiskFilter}
-                                            onChange={(event) => setEntityRiskFilter(event.target.value as any)}
+                                            onChange={(event) => setEntityRiskFilter(event.target.value as EntityRiskFilterType)}
                                             className="bg-white border border-slate-200 focus:border-[#FF4F00] rounded-xl px-3 py-2 text-xs font-bold text-[#002A24] outline-none"
                                         >
                                             <option value="ALL">All risk levels</option>
@@ -862,7 +1559,7 @@ const Dashboard = () => {
 
                                         <select
                                             value={entityClassificationFilter}
-                                            onChange={(event) => setEntityClassificationFilter(event.target.value as any)}
+                                            onChange={(event) => setEntityClassificationFilter(event.target.value as EntityClassificationFilterType)}
                                             className="bg-white border border-slate-200 focus:border-[#FF4F00] rounded-xl px-3 py-2 text-xs font-bold text-[#002A24] outline-none"
                                         >
                                             <option value="ALL">All classifications</option>
@@ -900,7 +1597,7 @@ const Dashboard = () => {
                                                     ].map((column) => (
                                                         <th key={column.key} className="px-5 py-3 text-left">
                                                             <button
-                                                                onClick={() => column.key !== 'classification' && column.key !== 'riskLevel' && column.key !== 'keySignal' ? updateSort(column.key as any) : undefined}
+                                                                onClick={() => column.key !== 'classification' && column.key !== 'riskLevel' && column.key !== 'keySignal' ? updateSort(column.key as EntitySortKey) : undefined}
                                                                 className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500"
                                                             >
                                                                 {column.label}

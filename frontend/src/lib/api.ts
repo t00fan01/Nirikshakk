@@ -44,19 +44,50 @@ export const api = {
   getTransactions: () => apiGet<Array<{ account_id?: string; timestamp?: string; transaction_id?: string }>>('/api/transactions'),
   getModelMetrics: () => apiGet<ModelMetricsResponse>('/api/model/metrics'),
   getModelFeatures: () => apiGet<{ features?: ModelFeatureImportance[] }>('/api/model/features'),
-  getAlerts: async (filters?: { severity?: string; status?: string; classification?: string; account_id?: string }) => {
+  getAlerts: async (filters?: { severity?: string; status?: string; classification?: string; account_id?: string; limit?: number; min_risk_score?: number; risk_level?: string }) => {
     const params = new URLSearchParams();
     Object.entries(filters ?? {}).forEach(([key, value]) => {
-      if (value) params.set(key, value);
+      if (value !== undefined && value !== null && value !== '') params.set(key, String(value));
     });
     const query = params.toString();
-    const result = await apiGet<AlertRecord[] | { total_alerts?: number; alerts?: AlertRecord[] }>(`/api/alerts${query ? `?${query}` : ''}`);
+    const result = await apiGet<AlertRecord[] | { total_alerts?: number; alerts?: AlertRecord[]; total_leads?: number; leads?: AlertRecord[] }>(`/api/alerts${query ? `?${query}` : ''}`);
     if (Array.isArray(result)) return result;
     if (result && Array.isArray(result.alerts)) return result.alerts;
+    if (result && Array.isArray((result as { leads?: AlertRecord[] }).leads)) return (result as { leads?: AlertRecord[] }).leads!;
     return [];
   },
   getAccountClassification: (accountId: string) => apiGet<Record<string, unknown>>(`/api/accounts/${encodeURIComponent(accountId)}/classification`),
   getAccountInvestigation: (accountId: string) => apiGet<AccountInvestigationResponse>(`/api/accounts/${encodeURIComponent(accountId)}/investigation`),
+  
+  // Phase 5/6 Bitcoin Graph API
+  getGraphStats: () => apiGet<GraphStatsResponse>('/api/graph/stats'),
+  searchGraph: (query: string, limit: number = 20) => 
+    apiGet<GraphSearchResponse>(`/api/graph/search?q=${encodeURIComponent(query)}&limit=${limit}`),
+  getEntityDetails: (entityId: string) => 
+    apiGet<GraphEntityDetails>(`/api/graph/${encodeURIComponent(entityId)}`),
+  getEntitySubgraph: (
+    entityId: string, 
+    hops: number = 1, 
+    maxNodes: number = 100, 
+    minRiskScore?: number, 
+    riskLevel?: string
+  ) => {
+    const params = new URLSearchParams({
+      hops: String(hops),
+      max_nodes: String(maxNodes),
+    });
+    if (minRiskScore !== undefined && minRiskScore !== null) {
+      params.set('min_risk_score', String(minRiskScore));
+    }
+    if (riskLevel) {
+      params.set('risk_level', riskLevel);
+    }
+    return apiGet<GraphSubgraphResponse>(`/api/graph/${encodeURIComponent(entityId)}/subgraph?${params.toString()}`);
+  },
+  getGraphPath: (source: string, target: string) => 
+    apiGet<GraphPathResponse>(`/api/graph/path?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}`),
+  getAlertDetails: (alertId: string) =>
+    apiGet<AlertDetailResponse>(`/api/alerts/${encodeURIComponent(alertId)}`),
 };
 
 export interface InvestigationFeatureSet {
@@ -152,3 +183,160 @@ export interface AlertRecord {
   primary_reason?: string;
   status?: string;
 }
+
+// ==========================================
+// Phase 5 & 6 Bitcoin Investigation Graph Types
+// ==========================================
+
+export interface GraphNode {
+  id: string;
+  type: string; // 'wallet' | 'transaction' | 'ip' | 'asn' | 'country' | 'entity'
+  label: string;
+  risk_score?: number | null;
+  risk_level?: string | null;
+  anomaly_score?: number | null;
+  anomaly_percentile?: number | null;
+  is_outlier?: boolean | null;
+  alert_id?: string | null;
+  metadata?: Record<string, unknown>;
+  // ForceGraph runtime properties
+  x?: number;
+  y?: number;
+  z?: number;
+  vx?: number;
+  vy?: number;
+  vz?: number;
+  val?: number;
+}
+
+export interface GraphLink {
+  source: string | GraphNode;
+  target: string | GraphNode;
+  type: 'input' | 'output' | 'counterparty' | 'network_observation' | string;
+  metadata?: Record<string, unknown>;
+  // ForceGraph runtime properties
+  is_flagged?: boolean;
+}
+
+export interface GraphMeta {
+  center?: string | null;
+  hops?: number | null;
+  node_count: number;
+  edge_count: number;
+  truncated: boolean;
+  query_time_ms?: number | null;
+  filter_applied?: Record<string, unknown> | null;
+}
+
+export interface GraphSubgraphResponse {
+  nodes: GraphNode[];
+  links: GraphLink[];
+  meta: GraphMeta;
+}
+
+export interface GraphStatsResponse {
+  status: string;
+  total_nodes: number;
+  total_edges: number;
+  wallet_nodes: number;
+  transaction_nodes: number;
+  ip_nodes: number;
+  asn_nodes: number;
+  country_nodes: number;
+  entity_nodes: number;
+  input_edges: number;
+  output_edges: number;
+  counterparty_edges: number;
+  network_observation_edges: number;
+  density: number;
+  is_deterministic?: boolean;
+  built_at?: string | null;
+  source_dataset_records?: number | null;
+}
+
+// Alias for requested name
+export type GraphStats = GraphStatsResponse;
+
+export interface SearchResultItem {
+  id: string;
+  type: string;
+  label: string;
+  match_field: string;
+  risk_score?: number | null;
+  risk_level?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+// Alias for requested name
+export type GraphSearchResult = SearchResultItem;
+
+export interface GraphSearchResponse {
+  query: string;
+  total_matches: number;
+  results: SearchResultItem[];
+}
+
+export interface GraphEntityDetails {
+  id: string;
+  type: string;
+  label: string;
+  risk_score?: number | null;
+  risk_level?: string | null;
+  anomaly_score?: number | null;
+  anomaly_percentile?: number | null;
+  is_outlier?: boolean | null;
+  alert_id?: string | null;
+  in_degree: number;
+  out_degree: number;
+  total_degree: number;
+  attributes: Record<string, unknown>;
+}
+
+export interface GraphPathResponse {
+  found: boolean;
+  source: string;
+  target: string;
+  path_length?: number | null;
+  nodes: GraphNode[];
+  links: GraphLink[];
+  disclaimer: string;
+}
+
+export interface EvidenceReason {
+  category: string;
+  feature: string;
+  value: unknown;
+  baseline: unknown;
+  explanation: string;
+}
+
+export interface AlertDetailResponse {
+  alert_id: string;
+  rank?: number;
+  wallet_address: string;
+  risk_score: number;
+  risk_level: string;
+  anomaly_score: number;
+  anomaly_percentile?: number;
+  subscores?: {
+    anomaly?: number;
+    activity?: number;
+    network?: number;
+    behavior?: number;
+  };
+  reasons: EvidenceReason[];
+  feature_metrics?: Record<string, unknown>;
+  transaction_summary?: {
+    total_transactions?: number;
+    total_input_btc?: number;
+    total_output_btc?: number;
+    first_seen?: string;
+    last_seen?: string;
+  };
+  network_summary?: {
+    unique_ip_count?: number;
+    unique_country_count?: number;
+    unique_asn_count?: number;
+  };
+}
+
