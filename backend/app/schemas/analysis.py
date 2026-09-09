@@ -8,8 +8,40 @@ and explainable lead inspection payloads.
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
-from app.ml.analyzer import AnalysisStatusResponse, AnalysisSummary
 from app.ml.evidence import EvidenceReason
+
+
+class AnalysisSummary(BaseModel):
+    """Execution summary returned after running ML analysis."""
+    status: str = Field(..., description="'SUCCESS' or 'FAILED'")
+    analyzed_at: str
+    wallets_analyzed: int
+    anomalies_detected: int
+    critical_risk_leads: int
+    high_risk_leads: int
+    medium_risk_leads: int
+    low_risk_leads: int
+    model_type: str = "IsolationForest"
+    analysis_duration_seconds: float
+    output_files: Dict[str, str]
+    # Phase 9 extensions:
+    clustering_enabled: bool = True
+    cluster_count: int = 6
+    clustered_wallets: int = 0
+    silhouette_score_k6: float = 0.0
+    clustering_runtime_ms: float = 0.0
+
+
+class AnalysisStatusResponse(BaseModel):
+    """Status metadata for existing analysis results on disk."""
+    has_analysis: bool
+    analyzed_at: Optional[str] = None
+    wallets_analyzed: int = 0
+    anomalies_detected: int = 0
+    high_risk_leads: int = 0
+    critical_risk_leads: int = 0
+    model_type: Optional[str] = None
+    cluster_count: Optional[int] = None
 
 
 class AlertItem(BaseModel):

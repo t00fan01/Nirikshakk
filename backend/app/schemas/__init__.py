@@ -14,6 +14,15 @@ from .analysis import (
     AnalysisStatusResponse,
     AnalysisSummary,
 )
+from .clustering import (
+    ClusterDetailResponse,
+    ClusterProfile,
+    ClusterProfilesResponse,
+    ClusteringDiagnostics,
+    SimilarWallet,
+    SimilarWalletsResponse,
+    WalletClusterAssignment,
+)
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -28,4 +37,11 @@ __all__ = [
     "AlertsListResponse",
     "AnalysisStatusResponse",
     "AnalysisSummary",
+    "ClusterDetailResponse",
+    "ClusterProfile",
+    "ClusterProfilesResponse",
+    "ClusteringDiagnostics",
+    "SimilarWallet",
+    "SimilarWalletsResponse",
+    "WalletClusterAssignment",
 ]

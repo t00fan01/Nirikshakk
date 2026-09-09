@@ -25,6 +25,7 @@ from app.ml.anomaly import (
     IsolationForestConfig,
     train_anomaly_model,
 )
+from app.ml.clustering import run_behavioral_clustering
 from app.ml.evidence import (
     WhyFlaggedEvidence,
     compute_dataset_baselines,
@@ -41,34 +42,9 @@ from app.pipeline.storage import (
     get_duckdb_connection,
     has_normalized_data,
 )
+from app.schemas.analysis import AnalysisStatusResponse, AnalysisSummary
 
 DEFAULT_ANALYSIS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "analysis"
-
-
-class AnalysisSummary(BaseModel):
-    """Execution summary returned after running ML analysis."""
-    status: str = Field(..., description="'SUCCESS' or 'FAILED'")
-    analyzed_at: str
-    wallets_analyzed: int
-    anomalies_detected: int
-    critical_risk_leads: int
-    high_risk_leads: int
-    medium_risk_leads: int
-    low_risk_leads: int
-    model_type: str = "IsolationForest"
-    analysis_duration_seconds: float
-    output_files: Dict[str, str]
-
-
-class AnalysisStatusResponse(BaseModel):
-    """Status metadata for existing analysis results on disk."""
-    has_analysis: bool
-    analyzed_at: Optional[str] = None
-    wallets_analyzed: int = 0
-    anomalies_detected: int = 0
-    high_risk_leads: int = 0
-    critical_risk_leads: int = 0
-    model_type: Optional[str] = None
 
 
 def get_analysis_dir(custom_dir: Optional[Union[str, Path]] = None) -> Path:
@@ -83,6 +59,8 @@ def get_analysis_paths(analysis_dir: Optional[Union[str, Path]] = None) -> Dict[
         "features": adir / "wallet_features.parquet",
         "anomalies": adir / "wallet_anomalies.parquet",
         "leads": adir / "investigative_leads.parquet",
+        "clusters": adir / "wallet_clusters.parquet",
+        "cluster_profiles": adir / "cluster_profiles.json",
         "summary": adir / "analysis_summary.json",
     }
 
@@ -177,7 +155,17 @@ def run_full_analysis(
 
     df_leads = pl.DataFrame(leads_rows)
 
-    # 5. Persist Parquet Analysis Artifacts
+    # 5. Unsupervised Behavioral Clustering (Phase 9)
+    t_cluster_start = time.time()
+    cluster_profiles_resp, df_clusters = run_behavioral_clustering(
+        df_features=df_features,
+        df_scored=df_scored,
+        df_anomalies=df_anomalies,
+        analysis_dir=analysis_dir,
+    )
+    cluster_runtime_ms = round((time.time() - t_cluster_start) * 1000.0, 2)
+
+    # 6. Persist Parquet Analysis Artifacts
     paths = get_analysis_paths(analysis_dir)
     df_features.write_parquet(paths["features"], compression="zstd")
     df_anomalies.write_parquet(paths["anomalies"], compression="zstd")
@@ -204,6 +192,11 @@ def run_full_analysis(
         model_type="IsolationForest",
         analysis_duration_seconds=duration,
         output_files={k: str(v) for k, v in paths.items() if k != "summary"},
+        clustering_enabled=True,
+        cluster_count=cluster_profiles_resp.total_clusters,
+        clustered_wallets=cluster_profiles_resp.total_wallets,
+        silhouette_score_k6=cluster_profiles_resp.diagnostics.selected_k_silhouette,
+        clustering_runtime_ms=cluster_runtime_ms,
     )
 
     with open(paths["summary"], "w", encoding="utf-8") as f:
@@ -229,6 +222,7 @@ def get_analysis_status(analysis_dir: Optional[Union[str, Path]] = None) -> Anal
             high_risk_leads=summary.get("high_risk_leads", 0),
             critical_risk_leads=summary.get("critical_risk_leads", 0),
             model_type=summary.get("model_type", "IsolationForest"),
+            cluster_count=summary.get("cluster_count", 6),
         )
     except Exception:
         return AnalysisStatusResponse(has_analysis=False)
