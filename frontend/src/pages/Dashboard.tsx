@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import IntelligenceTrends from '../components/IntelligenceTrends';
 import LiveThreatFeed from '../components/LiveThreatFeed';
 import ImpactDashboard from '../components/ImpactDashboard';
-import AccountInvestigation from '../components/AccountInvestigation';
+import WalletInvestigation from '../components/WalletInvestigation';
 import ModelAnalytics from '../components/ModelAnalytics';
 import AlertsPage from '../components/AlertsPage';
 import { 
@@ -137,7 +137,16 @@ const Dashboard = () => {
     const [entityRiskFilter, setEntityRiskFilter] = useState<EntityRiskFilterType>('ALL');
     const [entityClassificationFilter, setEntityClassificationFilter] = useState<EntityClassificationFilterType>('ALL');
     const [entitySort, setEntitySort] = useState<{ key: EntitySortKey; direction: 'asc' | 'desc' }>({ key: 'riskScore', direction: 'desc' });
-    const [selectedAccountForInvestigation, setSelectedAccountForInvestigation] = useState<string | null>(accountFromUrl || localStorage.getItem('selected_mule_account'));
+    const [selectedAccountForInvestigation, setSelectedAccountForInvestigation] = useState<string | null>(
+        accountFromUrl || localStorage.getItem('selected_investigation_wallet') || localStorage.getItem('selected_mule_account') || "bc1qa0fa87eac1de3da717bcfdc46ebb04276a"
+    );
+
+    useEffect(() => {
+        if (accountFromUrl) {
+            setSelectedAccountForInvestigation(accountFromUrl);
+            setActiveTab('investigate');
+        }
+    }, [accountFromUrl]);
 
     // ==========================================
     // Real Bitcoin Investigation Graph State (Phase 6)
@@ -206,6 +215,46 @@ const Dashboard = () => {
         }
     };
 
+    const handleNodeClick = async (node: GraphNode) => {
+        if (!node || !node.id) return;
+        const gNode = node;
+        setSelectedGraphNode(gNode);
+        setDetailsLoading(true);
+        setSelectedEntityDetails(null);
+        setSelectedAlertDetails(null);
+
+        // Smooth camera movement towards the clicked node
+        if (fgRef.current && typeof node.x === 'number' && typeof node.y === 'number' && typeof node.z === 'number') {
+            const distance = 90;
+            const hyp = Math.hypot(node.x, node.y, node.z) || 1;
+            const distRatio = 1 + distance / hyp;
+            fgRef.current.cameraPosition(
+                { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+                node,
+                1000
+            );
+        }
+
+        try {
+            const details = await api.getEntityDetails(gNode.id);
+            setSelectedEntityDetails(details);
+
+            const alertId = gNode.alert_id || details?.alert_id;
+            if (alertId) {
+                try {
+                    const alertData = await api.getAlertDetails(alertId);
+                    setSelectedAlertDetails(alertData);
+                } catch (e) {
+                    console.warn('Could not load alert dossier for node:', e);
+                }
+            }
+        } catch (err) {
+            console.error('Failed to load entity details:', err);
+        } finally {
+            setDetailsLoading(false);
+        }
+    };
+
     const loadSubgraph = async (centerEntityId: string, hops = 1, maxNodes = 100) => {
         setIsGraphLoading(true);
         setGraphError(null);
@@ -219,6 +268,10 @@ const Dashboard = () => {
                 setActiveCenterEntity(cleanId);
                 setGraphHops(hops);
                 setGraphError(null);
+                const foundNode = subgraph.nodes.find(n => n.id === cleanId);
+                if (foundNode) {
+                    handleNodeClick(foundNode);
+                }
             }
         } catch (err: unknown) {
             console.error('Failed to fetch subgraph:', err);
@@ -288,46 +341,6 @@ const Dashboard = () => {
             setGraphError('Investigation graph unavailable. Start the local NIRIKSHAK backend to load live graph data.');
         } finally {
             setIsGraphLoading(false);
-        }
-    };
-
-    const handleNodeClick = async (node: GraphNode) => {
-        if (!node || !node.id) return;
-        const gNode = node;
-        setSelectedGraphNode(gNode);
-        setDetailsLoading(true);
-        setSelectedEntityDetails(null);
-        setSelectedAlertDetails(null);
-
-        // Smooth camera movement towards the clicked node
-        if (fgRef.current && typeof node.x === 'number' && typeof node.y === 'number' && typeof node.z === 'number') {
-            const distance = 90;
-            const hyp = Math.hypot(node.x, node.y, node.z) || 1;
-            const distRatio = 1 + distance / hyp;
-            fgRef.current.cameraPosition(
-                { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
-                node,
-                1000
-            );
-        }
-
-        try {
-            const details = await api.getEntityDetails(gNode.id);
-            setSelectedEntityDetails(details);
-
-            const alertId = gNode.alert_id || details?.alert_id;
-            if (alertId) {
-                try {
-                    const alertData = await api.getAlertDetails(alertId);
-                    setSelectedAlertDetails(alertData);
-                } catch (e) {
-                    console.warn('Could not load alert dossier for node:', e);
-                }
-            }
-        } catch (err) {
-            console.error('Failed to load entity details:', err);
-        } finally {
-            setDetailsLoading(false);
         }
     };
 
@@ -830,7 +843,7 @@ const Dashboard = () => {
                                 key={item.id}
                                 onClick={() => {
                                     if (item.id === 'investigate' && !selectedAccountForInvestigation) {
-                                        setSelectedAccountForInvestigation("bc1qxy2kgdygJR8992XKPZ");
+                                        setSelectedAccountForInvestigation("bc1qa0fa87eac1de3da717bcfdc46ebb04276a");
                                     }
                                     setActiveTab(item.id as TabType);
                                 }}
@@ -963,10 +976,16 @@ const Dashboard = () => {
                 <div className="p-8 pb-20">
                     {/* VIEW: INVESTIGATE */}
                     {activeTab === 'investigate' && (
-                        <AccountInvestigation
-                            accountId={selectedAccountForInvestigation || "bc1qxy2kgdygJR8992XKPZ"}
+                        <WalletInvestigation
+                            walletId={selectedAccountForInvestigation || "bc1qa0fa87eac1de3da717bcfdc46ebb04276a"}
                             onBack={() => {
                                 setActiveTab('overview');
+                            }}
+                            onExploreInGraph={(walletAddress: string) => {
+                                const canonicalId = walletAddress.startsWith('wallet:') ? walletAddress : `wallet:${walletAddress}`;
+                                setActiveCenterEntity(canonicalId);
+                                loadSubgraph(canonicalId, 1, 100);
+                                setActiveTab('network');
                             }}
                         />
                     )}
@@ -1620,7 +1639,7 @@ const Dashboard = () => {
                                                             onClick={() => {
                                                                 setSelectedAccountForInvestigation(row.accountId);
                                                                 setActiveTab('investigate');
-                                                                localStorage.setItem('selected_mule_account', row.accountId);
+                                                                localStorage.setItem('selected_investigation_wallet', row.accountId);
                                                             }}
                                                             className={`cursor-pointer transition-colors ${selectedAccountForInvestigation === row.accountId ? 'bg-[#FF4F00]/5' : 'hover:bg-slate-50'}`}
                                                         >

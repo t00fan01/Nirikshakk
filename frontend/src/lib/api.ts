@@ -12,7 +12,9 @@ async function apiGet<T>(path: string): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+    const error = new Error(text || `Request failed: ${response.status}`);
+    (error as { status?: number }).status = response.status;
+    throw error;
   }
 
   return response.json() as Promise<T>;
@@ -30,7 +32,9 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+    const error = new Error(text || `Request failed: ${response.status}`);
+    (error as { status?: number }).status = response.status;
+    throw error;
   }
 
   return response.json() as Promise<T>;
@@ -40,7 +44,6 @@ export const api = {
   getMuleStats: () => apiGet<{ total_accounts?: number; labels?: Record<string, number> }>('/api/mule/stats'),
   getWebSocketTicket: () => apiPost<{ ticket: string }>('/api/auth/ws-ticket', {}),
   getTopMuleAccounts: () => apiGet<Array<{ account_id?: string; label?: string }>>('/api/mule/top'),
-  getAccounts: () => apiGet<Array<{ account_id?: string; label?: string; account_type?: string }>>('/api/accounts'),
   getTransactions: () => apiGet<Array<{ account_id?: string; timestamp?: string; transaction_id?: string }>>('/api/transactions'),
   getModelMetrics: () => apiGet<ModelMetricsResponse>('/api/model/metrics'),
   getModelFeatures: () => apiGet<{ features?: ModelFeatureImportance[] }>('/api/model/features'),
@@ -56,8 +59,6 @@ export const api = {
     if (result && Array.isArray((result as { leads?: AlertRecord[] }).leads)) return (result as { leads?: AlertRecord[] }).leads!;
     return [];
   },
-  getAccountClassification: (accountId: string) => apiGet<Record<string, unknown>>(`/api/accounts/${encodeURIComponent(accountId)}/classification`),
-  getAccountInvestigation: (accountId: string) => apiGet<AccountInvestigationResponse>(`/api/accounts/${encodeURIComponent(accountId)}/investigation`),
   
   // Phase 5/6 Bitcoin Graph API
   getGraphStats: () => apiGet<GraphStatsResponse>('/api/graph/stats'),
@@ -88,58 +89,88 @@ export const api = {
     apiGet<GraphPathResponse>(`/api/graph/path?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}`),
   getAlertDetails: (alertId: string) =>
     apiGet<AlertDetailResponse>(`/api/alerts/${encodeURIComponent(alertId)}`),
+  getWalletInvestigation: (walletId: string, txLimit: number = 50, netLimit: number = 50) =>
+    apiGet<WalletInvestigationResponse>(`/api/investigations/${encodeURIComponent(walletId)}?tx_limit=${txLimit}&net_limit=${netLimit}`),
 };
 
-export interface InvestigationFeatureSet {
-  [key: string]: string | number | null;
+export interface WalletSummary {
+  address: string;
+  first_seen?: string | null;
+  last_seen?: string | null;
+  transaction_count: number;
+  input_transaction_count: number;
+  output_transaction_count: number;
+  total_input_amount: number;
+  total_output_amount: number;
 }
 
-export interface InvestigationTransaction {
-  transaction_id?: string;
-  account_id?: string;
-  sender_account_id?: string;
-  receiver_account_id?: string;
-  amount?: number;
-  timestamp?: string;
-  channel?: string;
-  risk_flag?: boolean;
-}
-
-export interface InvestigationNetworkLink {
-  source?: string;
-  target?: string;
-  direction?: string;
-  suspicious?: boolean;
-}
-
-export interface InvestigationAlert {
-  alert_id?: string;
-  timestamp?: string;
-  severity?: string;
-  reason?: string;
-  risk_score?: number;
-  classification?: string;
-  status?: string;
-}
-
-export interface AccountInvestigationResponse {
-  account_id: string;
-  classification?: string;
-  probability?: number;
-  confidence?: number;
-  risk_score?: number;
-  risk_level?: string;
-  features?: InvestigationFeatureSet;
-  feature_importance?: Record<string, number>;
-  reasons?: string[];
-  transactions?: InvestigationTransaction[];
-  network?: {
-    account_id?: string;
-    connected_accounts?: string[];
-    links?: InvestigationNetworkLink[];
+export interface RiskDossier {
+  score: number;
+  level: string;
+  anomaly_score: number;
+  anomaly_percentile: number;
+  is_outlier?: boolean;
+  subscores: {
+    anomaly?: number;
+    activity?: number;
+    network?: number;
+    behavior?: number;
+    [key: string]: number | undefined;
   };
-  alerts?: InvestigationAlert[];
-  containment_status?: string;
+}
+
+export interface EvidenceItem {
+  category: string;
+  message: string;
+  severity: string;
+  metric?: unknown;
+  baseline?: unknown;
+  feature?: string;
+}
+
+export interface BitcoinInvestigationTransaction {
+  txid: string;
+  timestamp: string;
+  input_addresses: string[];
+  output_addresses: string[];
+  input_amounts: number[];
+  output_amounts: number[];
+  fee: number;
+  script_type: string;
+  total_input_amount?: number | null;
+  total_output_amount?: number | null;
+  is_input: boolean;
+  is_output: boolean;
+}
+
+export interface BitcoinInvestigationNetworkObservation {
+  txid: string;
+  timestamp: string;
+  src_ip: string;
+  dst_ip: string;
+  src_port: number;
+  dst_port: number;
+  geo_country: string;
+  asn: string;
+}
+
+export interface BitcoinInvestigationGraphSummary {
+  direct_neighbor_count: number;
+  transaction_count: number;
+  ip_count: number;
+  asn_count: number;
+  country_count: number;
+}
+
+export interface WalletInvestigationResponse {
+  wallet: WalletSummary;
+  risk?: RiskDossier | null;
+  evidence: EvidenceItem[];
+  transactions: BitcoinInvestigationTransaction[];
+  network_observations: BitcoinInvestigationNetworkObservation[];
+  graph_summary: BitcoinInvestigationGraphSummary;
+  total_transactions: number;
+  total_network_observations: number;
 }
 
 export interface ModelFeatureImportance {
