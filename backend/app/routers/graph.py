@@ -78,14 +78,30 @@ def search_graph(
 def graph_shortest_path(
     source: str = Query(..., min_length=1, description="Origin entity ID or raw identifier"),
     target: str = Query(..., min_length=1, description="Destination entity ID or raw identifier"),
+    max_hops: int = Query(10, description="Maximum traversal depth (1 to 20)"),
 ):
     """
     Find the shortest observed transactional or network trajectory between two entities.
-    Returns ordered node and edge sequences.
+    Returns ordered node sequences, sequential step explanations, and traversal mode.
     """
+    clean_source = source.strip()
+    clean_target = target.strip()
+
+    if not clean_source or not clean_target:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Source and target entity identifiers must be non-empty strings.",
+        )
+
+    if max_hops < 1 or max_hops > 20:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"max_hops must be between 1 and 20 (received {max_hops}).",
+        )
+
     try:
         graph = load_or_build_graph()
-        result = find_shortest_path(graph, source_id=source, target_id=target)
+        result = find_shortest_path(graph, source_id=clean_source, target_id=clean_target, max_hops=max_hops)
         return result
     except FileNotFoundError as fnf:
         raise HTTPException(

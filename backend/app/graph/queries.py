@@ -13,11 +13,13 @@ import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 import networkx as nx
 
-from app.graph.serializers import subgraph_to_response_payload
+from app.graph.serializers import node_to_schema, subgraph_to_response_payload
 from app.schemas.graph import (
+    GraphLink,
     GraphPathResponse,
     GraphSearchResponse,
     GraphSubgraphResponse,
+    PathStep,
     SearchResultItem,
 )
 
@@ -226,14 +228,115 @@ def get_neighborhood_subgraph(
     )
 
 
+def generate_edge_explanation(
+    u: str,
+    v: str,
+    edge_type: str,
+    direction_reversed: bool,
+    edge_data: Dict[str, Any],
+    graph: nx.DiGraph,
+) -> str:
+    """Generate a deterministic human-readable explanation of an edge transition in the path."""
+    u_data = graph.nodes.get(u, {})
+    v_data = graph.nodes.get(v, {})
+    u_type = u_data.get("type", "")
+    v_type = v_data.get("type", "")
+
+    if edge_type == "input":
+        if not direction_reversed:
+            return "Wallet appears in the input set of this transaction."
+        else:
+            return "Transaction receives input funds from this wallet."
+
+    elif edge_type == "output":
+        if not direction_reversed:
+            return "Transaction outputs funds to this recipient wallet."
+        else:
+            return "Wallet receives output funds from this transaction."
+
+    elif edge_type == "counterparty":
+        return "Wallets are linked through observed transaction flow."
+
+    elif edge_type == "network_observation":
+        if (u_type == "transaction" and v_type == "ip") or (v_type == "transaction" and u_type == "ip"):
+            if not direction_reversed:
+                return "Transaction is associated with an observed network broadcast."
+            else:
+                return "Observed network broadcast associated with this transaction."
+        elif (u_type == "ip" and v_type == "asn") or (v_type == "ip" and u_type == "asn"):
+            if not direction_reversed:
+                return "Observed IP maps to this Autonomous System."
+            else:
+                return "Autonomous System routing associated with this IP observation."
+        elif (u_type == "ip" and v_type == "country") or (v_type == "ip" and u_type == "country"):
+            if not direction_reversed:
+                return "Observed IP maps to this geographic jurisdiction."
+            else:
+                return "Geographic jurisdiction associated with this IP observation."
+        else:
+            if not direction_reversed:
+                return "Entities are linked through observed network broadcast telemetry."
+            else:
+                return "Observed network broadcast telemetry connecting entities in reverse direction."
+
+    # General fallback
+    if not direction_reversed:
+        return f"Observed {edge_type} relationship connecting entities."
+    else:
+        return "Observed relationship traversed in reverse relative to the stored graph direction."
+
+
+def _bfs_shortest_path(
+    graph: nx.Graph,
+    source: str,
+    target: str,
+    max_hops: int = 10,
+) -> Optional[List[str]]:
+    """
+    Breadth-first search for the shortest path between source and target,
+    bounded strictly by max_hops. Returns ordered list of node IDs if found.
+    """
+    if source == target:
+        return [source]
+    if not graph.has_node(source) or not graph.has_node(target):
+        return None
+
+    visited = {source: None}
+    queue = deque([(source, 0)])
+
+    while queue:
+        curr, depth = queue.popleft()
+        if depth >= max_hops:
+            continue
+
+        # Sort neighbors alphabetically for deterministic traversal
+        neighbors = sorted(graph.neighbors(curr))
+        for neighbor in neighbors:
+            if neighbor not in visited:
+                visited[neighbor] = curr
+                if neighbor == target:
+                    path = [target]
+                    step = curr
+                    while step is not None:
+                        path.append(step)
+                        step = visited[step]
+                    path.reverse()
+                    return path
+                queue.append((neighbor, depth + 1))
+
+    return None
+
+
 def find_shortest_path(
     graph: nx.DiGraph,
     source_id: str,
     target_id: str,
+    max_hops: int = 10,
 ) -> GraphPathResponse:
     """
     Find the shortest observed transactional or network trajectory between two entities.
-    Attempts directed search first, then undirected search across shared hubs.
+    Attempts bounded directed search first, then falls back to bounded undirected search.
+    Returns ordered path sequence, step-by-step relationship explanations, and traversal mode.
     """
     can_source = resolve_node_id(graph, source_id)
     can_target = resolve_node_id(graph, target_id)
@@ -246,19 +349,20 @@ def find_shortest_path(
             path_length=None,
             nodes=[],
             links=[],
+            path_sequence=[],
+            traversal_mode=None,
+            steps=[],
         )
 
-    # 1. Try directed path
-    path_nodes: Optional[List[str]] = None
-    try:
-        path_nodes = nx.shortest_path(graph, source=can_source, target=can_target)
-    except (nx.NetworkXNoPath, nx.NodeNotFound):
-        # 2. Fallback to undirected path across shared hubs
-        try:
-            undirected_G = graph.to_undirected(as_view=True)
-            path_nodes = nx.shortest_path(undirected_G, source=can_source, target=can_target)
-        except (nx.NetworkXNoPath, nx.NodeNotFound):
-            path_nodes = None
+    # 1. Try bounded directed path
+    traversal_mode = "directed"
+    path_nodes = _bfs_shortest_path(graph, can_source, can_target, max_hops=max_hops)
+
+    # 2. Fallback to bounded undirected path across shared hubs
+    if not path_nodes:
+        traversal_mode = "undirected"
+        undirected_G = graph.to_undirected(as_view=True)
+        path_nodes = _bfs_shortest_path(undirected_G, can_source, can_target, max_hops=max_hops)
 
     if not path_nodes:
         return GraphPathResponse(
@@ -268,20 +372,72 @@ def find_shortest_path(
             path_length=None,
             nodes=[],
             links=[],
+            path_sequence=[],
+            traversal_mode=None,
+            steps=[],
         )
 
-    # Build sub-representation
-    sub_G = graph.subgraph(path_nodes).copy()
-    payload = subgraph_to_response_payload(
-        subgraph=sub_G,
-        center_id=can_source,
-    )
+    # Build ordered node representations
+    nodes = [node_to_schema(n_id, graph.nodes[n_id]) for n_id in path_nodes]
+
+    # Build sequential steps and consecutive path links
+    steps: List[PathStep] = []
+    links: List[GraphLink] = []
+    reserved = {"source", "target", "type"}
+
+    for i in range(len(path_nodes) - 1):
+        u = path_nodes[i]
+        v = path_nodes[i + 1]
+
+        if graph.has_edge(u, v):
+            edge_data = graph.get_edge_data(u, v)
+            direction_reversed = False
+            actual_source = u
+            actual_target = v
+        elif graph.has_edge(v, u):
+            edge_data = graph.get_edge_data(v, u)
+            direction_reversed = True
+            actual_source = v
+            actual_target = u
+        else:
+            edge_data = {}
+            direction_reversed = False
+            actual_source = u
+            actual_target = v
+
+        e_type = edge_data.get("type", "relationship")
+        meta = {k: val for k, val in edge_data.items() if k not in reserved and val is not None}
+        explanation = generate_edge_explanation(u, v, e_type, direction_reversed, edge_data, graph)
+
+        step = PathStep(
+            step_index=i + 1,
+            from_node=u,
+            to_node=v,
+            edge_type=e_type,
+            direction_reversed=direction_reversed,
+            metadata=meta,
+            explanation=explanation,
+        )
+        steps.append(step)
+
+        link = GraphLink(
+            source=actual_source,
+            target=actual_target,
+            type=e_type,
+            metadata=meta,
+        )
+        links.append(link)
+
+    path_len = len(path_nodes) - 1
 
     return GraphPathResponse(
         found=True,
         source=can_source,
         target=can_target,
-        path_length=len(path_nodes) - 1,
-        nodes=payload.nodes,
-        links=payload.links,
+        path_length=path_len,
+        nodes=nodes,
+        links=links,
+        path_sequence=path_nodes,
+        traversal_mode=traversal_mode,
+        steps=steps,
     )

@@ -88,6 +88,17 @@ class GraphSearchResponse(BaseModel):
     results: List[SearchResultItem]
 
 
+class PathStep(BaseModel):
+    """Single consecutive transition along an observed graph path."""
+    step_index: int = Field(..., description="1-indexed step in the trajectory")
+    from_node: str = Field(..., description="Origin node prefixed ID for this step")
+    to_node: str = Field(..., description="Destination node prefixed ID for this step")
+    edge_type: str = Field(..., description="Relationship type: 'input', 'output', 'counterparty', 'network_observation', etc.")
+    direction_reversed: bool = Field(False, description="True if traversal moved opposite the stored directed edge in graph")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Underlying relationship metadata (amounts, timestamps, ports)")
+    explanation: str = Field(..., description="Deterministic human-readable explanation of the relationship")
+
+
 class GraphPathResponse(BaseModel):
     """Shortest observed transactional or network trajectory between two entities."""
     found: bool
@@ -96,6 +107,9 @@ class GraphPathResponse(BaseModel):
     path_length: Optional[int] = None
     nodes: List[GraphNode] = Field(default_factory=list)
     links: List[GraphLink] = Field(default_factory=list)
+    path_sequence: List[str] = Field(default_factory=list, description="Authoritative ordered sequence of node IDs from source to target")
+    traversal_mode: Optional[str] = Field(None, description="'directed' if following transaction flow, 'undirected' if via shared hubs/clusters")
+    steps: List[PathStep] = Field(default_factory=list, description="Sequential edge-by-edge relationship steps")
     disclaimer: str = (
         "Observed shortest graph path represents transactional or network connectivity; "
         "it does not constitute proof of causality, common ownership, or direct intent."
