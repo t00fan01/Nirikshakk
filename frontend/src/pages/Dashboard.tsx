@@ -4,7 +4,7 @@ import {
     CheckCircle2, XCircle, Play,
     Menu, X, ChevronRight, User, Loader2,
     BarChart3, Search, ArrowUpDown, Network, FileText, SearchCheck, Layers,
-    RefreshCw, Crosshair, ExternalLink, AlertTriangle, Copy, Check
+    RefreshCw, Crosshair, ExternalLink, AlertTriangle, Copy, Check, GitFork
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -15,6 +15,7 @@ import IntelligenceTrends from '../components/IntelligenceTrends';
 import LiveThreatFeed from '../components/LiveThreatFeed';
 import ImpactDashboard from '../components/ImpactDashboard';
 import WalletInvestigation from '../components/WalletInvestigation';
+import GraphPathInvestigator from '../components/GraphPathInvestigator';
 import ModelAnalytics from '../components/ModelAnalytics';
 import AlertsPage from '../components/AlertsPage';
 import { 
@@ -25,7 +26,8 @@ import {
     GraphEntityDetails, 
     AlertDetailResponse, 
     SearchResultItem,
-    GraphMeta
+    GraphMeta,
+    GraphPathResponse
 } from '../lib/api';
 
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
@@ -175,6 +177,109 @@ const Dashboard = () => {
     const [graphDimensions, setGraphDimensions] = useState({ width: 800, height: 600 });
     const graphContainerRef = useRef<HTMLDivElement>(null);
     const fgRef = useRef<any>();
+
+    // ==========================================
+    // Phase 8B Graph Path Investigation State
+    // ==========================================
+    const [activePathResult, setActivePathResult] = useState<GraphPathResponse | null>(null);
+    const [showPathInvestigator, setShowPathInvestigator] = useState(false);
+    const [savedGraphBeforePath, setSavedGraphBeforePath] = useState<{ nodes: GraphNode[]; links: GraphLink[]; meta?: GraphMeta } | null>(null);
+
+    const isPathMode = Boolean(activePathResult && activePathResult.found);
+
+    const pathNodeIds = useMemo(() => {
+        if (!activePathResult || !activePathResult.found) return new Set<string>();
+        if (activePathResult.path_sequence && activePathResult.path_sequence.length > 0) {
+            return new Set<string>(activePathResult.path_sequence);
+        }
+        return new Set<string>(activePathResult.nodes.map(n => n.id));
+    }, [activePathResult]);
+
+    const pathEdgeKeys = useMemo(() => {
+        if (!activePathResult || !activePathResult.found) return new Set<string>();
+        const keys = new Set<string>();
+        if (activePathResult.steps && activePathResult.steps.length > 0) {
+            activePathResult.steps.forEach(s => {
+                keys.add(`${s.from_node}->${s.to_node}`);
+                keys.add(`${s.to_node}->${s.from_node}`);
+            });
+        } else if (activePathResult.path_sequence && activePathResult.path_sequence.length > 1) {
+            for (let i = 0; i < activePathResult.path_sequence.length - 1; i++) {
+                const u = activePathResult.path_sequence[i];
+                const v = activePathResult.path_sequence[i + 1];
+                keys.add(`${u}->${v}`);
+                keys.add(`${v}->${u}`);
+            }
+        }
+        return keys;
+    }, [activePathResult]);
+
+    const isPathLink = (link: GraphLink | { source?: unknown; target?: unknown; type?: string }) => {
+        if (!isPathMode || !pathEdgeKeys.size) return false;
+        const sId = typeof link.source === 'object' && link.source !== null ? (link.source as GraphNode).id : String(link.source || '');
+        const tId = typeof link.target === 'object' && link.target !== null ? (link.target as GraphNode).id : String(link.target || '');
+        return pathEdgeKeys.has(`${sId}->${tId}`) || pathEdgeKeys.has(`${tId}->${sId}`);
+    };
+
+    const handlePathFound = (result: GraphPathResponse) => {
+        setActivePathResult(result);
+        if (result.found && result.nodes && result.nodes.length > 0) {
+            if (!isPathMode && !savedGraphBeforePath) {
+                setSavedGraphBeforePath(realGraphData);
+            }
+            setRealGraphData(prev => {
+                const existingNodeIds = new Set(prev.nodes.map(n => n.id));
+                const mergedNodes = [...prev.nodes];
+                result.nodes.forEach(pn => {
+                    if (!existingNodeIds.has(pn.id)) {
+                        mergedNodes.push(pn);
+                        existingNodeIds.add(pn.id);
+                    }
+                });
+                const existingLinkKeys = new Set(prev.links.map(l => {
+                    const s = typeof l.source === 'object' && l.source !== null ? (l.source as GraphNode).id : String(l.source);
+                    const t = typeof l.target === 'object' && l.target !== null ? (l.target as GraphNode).id : String(l.target);
+                    return `${s}->${t}`;
+                }));
+                const mergedLinks = [...prev.links];
+                result.links.forEach(pl => {
+                    const s = typeof pl.source === 'object' && pl.source !== null ? (pl.source as GraphNode).id : String(pl.source);
+                    const t = typeof pl.target === 'object' && pl.target !== null ? (pl.target as GraphNode).id : String(pl.target);
+                    if (!existingLinkKeys.has(`${s}->${t}`)) {
+                        mergedLinks.push(pl);
+                        existingLinkKeys.add(`${s}->${t}`);
+                    }
+                });
+                return { ...prev, nodes: mergedNodes, links: mergedLinks };
+            });
+
+            setTimeout(() => {
+                if (fgRef.current) {
+                    fgRef.current.zoomToFit(1000, 50);
+                }
+            }, 300);
+        }
+    };
+
+    const handleExitPathMode = () => {
+        setActivePathResult(null);
+        if (savedGraphBeforePath) {
+            setRealGraphData(savedGraphBeforePath);
+            setSavedGraphBeforePath(null);
+        }
+        setTimeout(() => {
+            if (fgRef.current) {
+                fgRef.current.zoomToFit(1000, 40);
+            }
+        }, 200);
+    };
+
+    const handlePathNodeSelect = (nodeId: string) => {
+        const found = realGraphData.nodes.find(n => n.id === nodeId) || activePathResult?.nodes.find(n => n.id === nodeId);
+        if (found) {
+            handleNodeClick(found);
+        }
+    };
 
     // Test Diagnostics State
     const [testResults, setTestResults] = useState<TestResult[]>([]);
@@ -440,6 +545,7 @@ const Dashboard = () => {
     }, [activeTab, realGraphData]);
 
     // Real graph node 3D renderer
+    // Real graph node 3D renderer
     const getNodeThreeObject = (node: GraphNode) => {
         const isSelected = selectedGraphNode?.id === node.id;
         const type = (node.type || '').toLowerCase();
@@ -500,6 +606,56 @@ const Dashboard = () => {
             emissiveIntensity = 0.2;
         }
 
+        const isPathNode = isPathMode && pathNodeIds.has(node.id);
+
+        // De-emphasize non-path nodes during path mode
+        if (isPathMode && !isPathNode) {
+            const group = new THREE.Group();
+            let geometry: THREE.BufferGeometry;
+            if (type === 'transaction' || type === 'tx') {
+                geometry = new THREE.OctahedronGeometry(radius * 0.85);
+            } else if (type === 'ip' || type === 'asn') {
+                geometry = new THREE.DodecahedronGeometry(radius * 0.85);
+            } else {
+                geometry = new THREE.SphereGeometry(radius * 0.85, 12, 12);
+            }
+            const dimMaterial = new THREE.MeshStandardMaterial({
+                color: new THREE.Color(color),
+                emissive: new THREE.Color(emissive),
+                emissiveIntensity: 0.05,
+                roughness: 0.85,
+                metalness: 0.1,
+                transparent: true,
+                opacity: 0.14,
+            });
+            group.add(new THREE.Mesh(geometry, dimMaterial));
+            return group;
+        }
+
+        // Highlight path nodes in path mode
+        const seqIdx = isPathNode && activePathResult?.path_sequence ? activePathResult.path_sequence.indexOf(node.id) : -1;
+        const isPathSource = isPathNode && seqIdx === 0;
+        const isPathTarget = isPathNode && seqIdx === (activePathResult?.path_sequence?.length || 1) - 1;
+
+        if (isPathNode) {
+            if (isPathSource) {
+                color = '#10B981';
+                emissive = '#10B981';
+                emissiveIntensity = 0.85;
+                radius = Math.max(radius * 1.35, 6.0);
+            } else if (isPathTarget) {
+                color = '#FF4F00';
+                emissive = '#FF4F00';
+                emissiveIntensity = 0.85;
+                radius = Math.max(radius * 1.35, 6.0);
+            } else {
+                color = '#F59E0B';
+                emissive = '#F59E0B';
+                emissiveIntensity = 0.65;
+                radius = Math.max(radius * 1.25, 4.8);
+            }
+        }
+
         const group = new THREE.Group();
 
         // Base geometry: Sphere for wallet/IP/ASN, Octahedron for transactions
@@ -523,34 +679,45 @@ const Dashboard = () => {
         const mesh = new THREE.Mesh(geometry, material);
         group.add(mesh);
 
-        // Selection or High Risk Halo
+        // Halo: Path node halo or Selection / High Risk Halo
         const isHighOrCritical = (node.risk_level === 'CRITICAL' || node.risk_level === 'HIGH' || (node.risk_score && node.risk_score >= 60));
-        if (isSelected || isHighOrCritical) {
-            const haloGeo = new THREE.RingGeometry(radius * 1.3, radius * 1.6, 24);
+        if (isPathNode || isSelected || isHighOrCritical) {
+            const haloColor = isPathSource
+                ? '#10B981'
+                : isPathTarget
+                ? '#FF4F00'
+                : isPathNode
+                ? '#F59E0B'
+                : isSelected
+                ? '#38BDF8'
+                : color;
+
+            const haloGeo = new THREE.RingGeometry(radius * 1.3, radius * 1.65, 24);
             const haloMat = new THREE.MeshBasicMaterial({
-                color: new THREE.Color(isSelected ? '#38BDF8' : color),
+                color: new THREE.Color(haloColor),
                 side: THREE.DoubleSide,
                 transparent: true,
-                opacity: isSelected ? 0.8 : 0.45,
+                opacity: isPathNode ? 0.85 : isSelected ? 0.8 : 0.45,
             });
             const halo = new THREE.Mesh(haloGeo, haloMat);
             group.add(halo);
         }
 
-        // Subdued label sprite for selected or high-risk nodes
-        if (isSelected || isHighOrCritical) {
+        // Subdued label sprite for selected, high-risk, or path nodes
+        if (isPathNode || isSelected || isHighOrCritical) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             if (ctx) {
                 canvas.width = 256;
                 canvas.height = 64;
-                ctx.font = 'Bold 20px monospace';
-                ctx.fillStyle = isSelected ? '#FFFFFF' : '#CBD5E1';
-                const labelText = (node.label || node.id || '').substring(0, 16);
+                ctx.font = isPathNode ? 'Bold 22px monospace' : 'Bold 20px monospace';
+                ctx.fillStyle = isPathSource ? '#10B981' : isPathTarget ? '#FF4F00' : isSelected ? '#FFFFFF' : '#CBD5E1';
+                const prefix = isPathNode && seqIdx >= 0 ? `[${seqIdx + 1}] ` : '';
+                const labelText = prefix + (node.label || node.id || '').substring(0, isPathNode ? 14 : 16);
                 ctx.fillText(labelText, 10, 38);
 
                 const texture = new THREE.CanvasTexture(canvas);
-                const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.9 });
+                const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: isPathNode ? 1.0 : 0.9 });
                 const sprite = new THREE.Sprite(spriteMat);
                 sprite.scale.set(24, 6, 1);
                 sprite.position.set(0, radius + 5, 0);
@@ -562,6 +729,13 @@ const Dashboard = () => {
     };
 
     const getLinkColor = (link: GraphLink | { source?: unknown; target?: unknown; type?: string }) => {
+        if (isPathMode) {
+            if (isPathLink(link)) {
+                return activePathResult?.traversal_mode === 'undirected' ? 'rgba(245, 158, 11, 0.95)' : 'rgba(255, 79, 0, 0.95)';
+            }
+            return 'rgba(255, 255, 255, 0.03)';
+        }
+
         const type = (link?.type || '').toLowerCase();
         const src = typeof link.source === 'object' && link.source !== null ? (link.source as GraphNode) : null;
         const tgt = typeof link.target === 'object' && link.target !== null ? (link.target as GraphNode) : null;
@@ -579,6 +753,11 @@ const Dashboard = () => {
     };
 
     const getLinkWidth = (link: GraphLink | { source?: unknown; target?: unknown; type?: string }) => {
+        if (isPathMode) {
+            if (isPathLink(link)) return 3.5;
+            return 0.4;
+        }
+
         const type = (link?.type || '').toLowerCase();
         const src = typeof link.source === 'object' && link.source !== null ? (link.source as GraphNode) : null;
         const tgt = typeof link.target === 'object' && link.target !== null ? (link.target as GraphNode) : null;
@@ -589,12 +768,24 @@ const Dashboard = () => {
     };
 
     const getLinkParticles = (link: GraphLink | { type?: string }) => {
+        if (isPathMode) {
+            if (isPathLink(link)) return 4;
+            return 0;
+        }
+
         const type = (link?.type || '').toLowerCase();
         if (type === 'counterparty' || type === 'input' || type === 'output') return 2;
         return 0;
     };
 
     const getLinkParticleColor = (link: GraphLink | { source?: unknown; target?: unknown; type?: string }) => {
+        if (isPathMode) {
+            if (isPathLink(link)) {
+                return activePathResult?.traversal_mode === 'undirected' ? '#F59E0B' : '#FF4F00';
+            }
+            return '#00D68F';
+        }
+
         const type = (link?.type || '').toLowerCase();
         const src = typeof link.source === 'object' && link.source !== null ? (link.source as GraphNode) : null;
         const tgt = typeof link.target === 'object' && link.target !== null ? (link.target as GraphNode) : null;
@@ -615,6 +806,13 @@ const Dashboard = () => {
         const riskScore = typeof node.risk_score === 'number' ? node.risk_score.toFixed(1) : null;
         const anomalyScore = typeof node.anomaly_score === 'number' ? node.anomaly_score.toFixed(2) : null;
         
+        const seqIdx = isPathMode && activePathResult?.path_sequence ? activePathResult.path_sequence.indexOf(node.id) : -1;
+        const pathBadge = seqIdx >= 0 ? `
+            <div style="font-size: 9px; font-weight: 800; color: ${seqIdx === 0 ? '#10B981' : seqIdx === (activePathResult?.path_sequence?.length || 1) - 1 ? '#FF4F00' : '#F59E0B'}; letter-spacing: 0.1em; margin-bottom: 4px;">
+                PATH STEP ${seqIdx + 1} OF ${activePathResult?.path_sequence?.length} ${seqIdx === 0 ? '(SOURCE)' : seqIdx === (activePathResult?.path_sequence?.length || 1) - 1 ? '(TARGET)' : ''}
+            </div>
+        ` : '';
+
         let badgeColor = '#94A3B8';
         if (riskLevel === 'CRITICAL') badgeColor = '#EF4444';
         else if (riskLevel === 'HIGH') badgeColor = '#EA580C';
@@ -627,6 +825,7 @@ const Dashboard = () => {
 
         return `
         <div style="background: rgba(11, 11, 18, 0.95); border: 1px solid rgba(255, 255, 255, 0.15); padding: 8px 12px; border-radius: 8px; font-family: Inter, sans-serif; backdrop-filter: blur(6px); min-width: 170px; color: #fff; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+            ${pathBadge}
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <span style="font-size: 9px; font-weight: 800; color: ${badgeColor}; letter-spacing: 0.1em;">${type}</span>
                 ${riskLevel ? `<span style="font-size: 9px; font-weight: 800; background: ${badgeColor}22; color: ${badgeColor}; padding: 2px 6px; border-radius: 4px;">${riskLevel}</span>` : ''}
@@ -1189,6 +1388,21 @@ const Dashboard = () => {
                                         ))}
                                     </div>
                                     <button
+                                        onClick={() => setShowPathInvestigator(prev => !prev)}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+                                            showPathInvestigator || isPathMode
+                                                ? 'bg-[#FF4F00] text-white shadow-md'
+                                                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                        }`}
+                                        title="Find Connection Between Entities"
+                                    >
+                                        <GitFork className="w-3.5 h-3.5" />
+                                        <span>Path Investigation</span>
+                                        {isPathMode && (
+                                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+                                        )}
+                                    </button>
+                                    <button
                                         onClick={() => {
                                             if (activeCenterEntity) loadSubgraph(activeCenterEntity, graphHops, 100);
                                             else initializeNetworkGraph();
@@ -1207,6 +1421,26 @@ const Dashboard = () => {
                                     </button>
                                 </div>
                             </div>
+
+                            {/* GRAPH PATH INVESTIGATION CONSOLE */}
+                            {showPathInvestigator && (
+                                <div className="mb-4 animate-in fade-in slide-in-from-top-3 duration-200">
+                                    <GraphPathInvestigator
+                                        isOpen={showPathInvestigator}
+                                        onClose={() => setShowPathInvestigator(false)}
+                                        activePathResult={activePathResult}
+                                        isPathMode={isPathMode}
+                                        onPathFound={handlePathFound}
+                                        onExitPathMode={handleExitPathMode}
+                                        onSelectNode={handlePathNodeSelect}
+                                        onInvestigateWallet={(walletAddr) => {
+                                            setSelectedAccountForInvestigation(walletAddr);
+                                            setActiveTab('investigate');
+                                        }}
+                                        selectedNodeId={selectedGraphNode?.id}
+                                    />
+                                </div>
+                            )}
 
                             {/* 3D FORCE GRAPH CANVAS */}
                             <div 
@@ -1269,6 +1503,23 @@ const Dashboard = () => {
                                             <p className="text-[9px] font-mono text-slate-400 truncate max-w-xs">
                                                 Center: {activeCenterEntity}
                                             </p>
+                                        )}
+                                        {isPathMode && activePathResult && (
+                                            <div className="mt-2 pt-2 border-t border-white/10 space-y-1">
+                                                <div className="flex items-center space-x-1.5 text-[10px] font-black font-mono text-[#FF4F00]">
+                                                    <GitFork className="w-3 h-3" />
+                                                    <span>PATH MODE ACTIVE ({activePathResult.path_length} HOPS)</span>
+                                                </div>
+                                                <p className="text-[9px] font-mono text-emerald-300">
+                                                    {activePathResult.traversal_mode === 'directed' ? 'DIRECTED TRAJECTORY' : 'UNDIRECTED CORRELATION'}
+                                                </p>
+                                                <button
+                                                    onClick={handleExitPathMode}
+                                                    className="pointer-events-auto mt-1 px-2.5 py-1 bg-red-500/30 hover:bg-red-500/50 text-red-300 rounded-lg text-[9px] font-mono uppercase transition-colors"
+                                                >
+                                                    Exit Path Mode
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -1476,6 +1727,13 @@ const Dashboard = () => {
                                                         Expand 2-Hop
                                                     </button>
                                                 </div>
+                                                <button
+                                                    onClick={() => setShowPathInvestigator(true)}
+                                                    className="w-full py-2.5 px-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                                                >
+                                                    <GitFork className="w-3.5 h-3.5 text-[#FF4F00]" />
+                                                    <span>Inspect Connection Path</span>
+                                                </button>
                                                 {selectedGraphNode.type === 'wallet' && (
                                                     <button
                                                         onClick={() => {
@@ -1483,9 +1741,9 @@ const Dashboard = () => {
                                                             setSelectedAccountForInvestigation(cleanAddr);
                                                             setActiveTab('investigate');
                                                         }}
-                                                        className="w-full py-2.5 px-3 bg-[#FF4F00] hover:bg-[#e04500] text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors shadow-lg"
+                                                        className="w-full py-2.5 px-3 bg-[#FF4F00] hover:bg-[#e04500] text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors shadow-lg cursor-pointer"
                                                     >
-                                                        <span>Deep Lead Investigation</span>
+                                                        <span>INVESTIGATE WALLET</span>
                                                         <ExternalLink className="w-3.5 h-3.5" />
                                                     </button>
                                                 )}

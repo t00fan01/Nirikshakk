@@ -85,8 +85,8 @@ export const api = {
     }
     return apiGet<GraphSubgraphResponse>(`/api/graph/${encodeURIComponent(entityId)}/subgraph?${params.toString()}`);
   },
-  getGraphPath: (source: string, target: string) => 
-    apiGet<GraphPathResponse>(`/api/graph/path?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}`),
+  getGraphPath: (source: string, target: string, maxHops: number = 10) =>
+    apiGet<GraphPathResponse>(`/api/graph/path?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}&max_hops=${maxHops}`),
   getAlertDetails: (alertId: string) =>
     apiGet<AlertDetailResponse>(`/api/alerts/${encodeURIComponent(alertId)}`),
   getWalletInvestigation: (walletId: string, txLimit: number = 50, netLimit: number = 50) =>
@@ -323,6 +323,16 @@ export interface GraphEntityDetails {
   attributes: Record<string, unknown>;
 }
 
+export interface PathStep {
+  step_index: number;
+  from_node: string;
+  to_node: string;
+  edge_type: string;
+  direction_reversed: boolean;
+  metadata: Record<string, unknown>;
+  explanation: string;
+}
+
 export interface GraphPathResponse {
   found: boolean;
   source: string;
@@ -330,6 +340,9 @@ export interface GraphPathResponse {
   path_length?: number | null;
   nodes: GraphNode[];
   links: GraphLink[];
+  path_sequence: string[];
+  traversal_mode?: 'directed' | 'undirected' | null;
+  steps: PathStep[];
   disclaimer: string;
 }
 
