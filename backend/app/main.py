@@ -16,13 +16,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.routers import datasets, stats, analysis, alerts, graph
+from app.routers import datasets, stats, analysis, alerts, graph, investigations
 
 app.include_router(datasets.router, prefix="/api/datasets", tags=["Datasets"])
 app.include_router(stats.router, prefix="/api", tags=["Stats"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["Analysis"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["Alerts"])
 app.include_router(graph.router, prefix="/api/graph", tags=["Graph"])
+app.include_router(investigations.router, prefix="/api/investigations", tags=["Investigations"])
 
 
 @app.get("/")
