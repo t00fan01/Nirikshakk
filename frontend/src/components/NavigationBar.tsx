@@ -21,8 +21,8 @@ const NavigationBar = () => {
                 <div className="hidden md:flex items-center space-x-10">
                     <Link to="/" className="text-sm font-bold text-[#121212]/60 hover:text-[#121212] transition-colors tracking-wide uppercase">Home</Link>
                     <Link to="/about" className="text-sm font-bold text-[#121212]/60 hover:text-[#121212] transition-colors tracking-wide uppercase">Network</Link>
-                    <Link 
-                        to="/dashboard" 
+                    <Link
+                        to="/dashboard"
                         className="px-8 py-3.5 rounded-2xl bg-[#FF4F00] text-white font-black text-xs tracking-widest uppercase hover:bg-[#e04500] transition-all shadow-lg hover:shadow-[0_0_30px_rgba(255,79,0,0.4)] flex items-center gap-2 active:scale-95"
                     >
                         <Shield className="w-4 h-4" /> Console

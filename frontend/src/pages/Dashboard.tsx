@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef, useMemo, Component } from 'react';
-import { 
-    ShieldAlert, Activity, 
+import {
+    ShieldAlert, Activity,
     CheckCircle2, XCircle, Play,
     Menu, X, ChevronRight, User, Loader2,
     BarChart3, Search, ArrowUpDown, Network, FileText, SearchCheck, Layers,
-    RefreshCw, Crosshair, ExternalLink, AlertTriangle, Copy, Check, GitFork
+    RefreshCw, Crosshair, ExternalLink, AlertTriangle, Copy, Check, GitFork,
+    Upload, Database
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -18,16 +19,19 @@ import WalletInvestigation from '../components/WalletInvestigation';
 import GraphPathInvestigator from '../components/GraphPathInvestigator';
 import ModelAnalytics from '../components/ModelAnalytics';
 import AlertsPage from '../components/AlertsPage';
-import { 
-    api, 
-    GraphNode, 
-    GraphLink, 
-    GraphStatsResponse, 
-    GraphEntityDetails, 
-    AlertDetailResponse, 
+import { DatasetImportModal } from '../components/DatasetImportModal';
+import {
+    api,
+    GraphNode,
+    GraphLink,
+    GraphStatsResponse,
+    GraphEntityDetails,
+    AlertDetailResponse,
     SearchResultItem,
     GraphMeta,
-    GraphPathResponse
+    GraphPathResponse,
+    ActiveDatasetStatus,
+    DatasetUploadResponse
 } from '../lib/api';
 
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
@@ -124,10 +128,11 @@ const Dashboard = () => {
         id: "ANALYST-01",
         role: userRole
     };
-    
+
     // Data State
-    const [entityStats, setEntityStats] = useState<Record<string, number>>({});
     const [entityLoading, setEntityLoading] = useState(false);
+    const [activeDataset, setActiveDataset] = useState<ActiveDatasetStatus | null>(null);
+    const [importModalOpen, setImportModalOpen] = useState(false);
     const [entityRiskRows, setEntityRiskRows] = useState<EntityRiskRow[]>([]);
     const [entityTableLoading, setEntityTableLoading] = useState(false);
     const [entityTableError, setEntityTableError] = useState<string | null>(null);
@@ -549,7 +554,7 @@ const Dashboard = () => {
     const getNodeThreeObject = (node: GraphNode) => {
         const isSelected = selectedGraphNode?.id === node.id;
         const type = (node.type || '').toLowerCase();
-        
+
         let color = '#00D68F';
         let radius = 3.5;
         let emissive = '#00D68F';
@@ -685,12 +690,12 @@ const Dashboard = () => {
             const haloColor = isPathSource
                 ? '#10B981'
                 : isPathTarget
-                ? '#FF4F00'
-                : isPathNode
-                ? '#F59E0B'
-                : isSelected
-                ? '#38BDF8'
-                : color;
+                    ? '#FF4F00'
+                    : isPathNode
+                        ? '#F59E0B'
+                        : isSelected
+                            ? '#38BDF8'
+                            : color;
 
             const haloGeo = new THREE.RingGeometry(radius * 1.3, radius * 1.65, 24);
             const haloMat = new THREE.MeshBasicMaterial({
@@ -805,7 +810,7 @@ const Dashboard = () => {
         const riskLevel = node.risk_level ? String(node.risk_level).toUpperCase() : null;
         const riskScore = typeof node.risk_score === 'number' ? node.risk_score.toFixed(1) : null;
         const anomalyScore = typeof node.anomaly_score === 'number' ? node.anomaly_score.toFixed(2) : null;
-        
+
         const seqIdx = isPathMode && activePathResult?.path_sequence ? activePathResult.path_sequence.indexOf(node.id) : -1;
         const pathBadge = seqIdx >= 0 ? `
             <div style="font-size: 9px; font-weight: 800; color: ${seqIdx === 0 ? '#10B981' : seqIdx === (activePathResult?.path_sequence?.length || 1) - 1 ? '#FF4F00' : '#F59E0B'}; letter-spacing: 0.1em; margin-bottom: 4px;">
@@ -852,55 +857,69 @@ const Dashboard = () => {
     const runDiagnostics = async () => {
         setRunningTests(true);
         setTestResults([]);
-        
-        const diagnosticPhases: TestResult[] = [
-            { name: 'Bitcoin Blockchain & Data Ingestion', status: 'PASS', time: '12ms' },
-            { name: 'Network Metadata (IP / ASN) Alignment', status: 'PASS', time: '45ms' },
-            { name: 'Multi-Layer Graph Assembly', status: 'PASS', time: '8ms' },
-            { name: 'Feature Vector Calculation', status: 'PASS', time: '112ms' },
-            { name: 'Anomaly Classifier Scoring', status: 'PASS', time: '89ms' },
-            { name: 'Entity Cluster Resolution', status: 'PASS', time: '14ms' },
-            { name: 'Explainable Lead Generation', status: 'PASS', time: '34ms' }
-        ];
 
-        for (const test of diagnosticPhases) {
-            await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 300));
-            setTestResults(prev => [...prev, test]);
+        try {
+            const active = await api.getActiveDataset();
+            setActiveDataset(active);
+            const timings = active.stage_timings_ms || {};
+
+            const hasData = Boolean(active.has_dataset);
+            const diagnosticPhases: TestResult[] = [
+                {
+                    name: 'Dataset Ingestion & Schema Validation',
+                    status: hasData ? 'PASS' : 'PENDING',
+                    time: timings.validation_ms !== undefined ? `${timings.validation_ms}ms` : (timings.validation !== undefined ? `${timings.validation}ms` : (hasData ? 'Verified' : 'Awaiting Data'))
+                },
+                {
+                    name: 'Relational DuckDB & Parquet Storage',
+                    status: hasData ? 'PASS' : 'PENDING',
+                    time: timings.normalization_ms !== undefined ? `${timings.normalization_ms}ms` : (timings.normalization !== undefined ? `${timings.normalization}ms` : (hasData ? 'Verified' : 'Awaiting Data'))
+                },
+                {
+                    name: 'Isolation Forest & K-Means Clustering',
+                    status: hasData ? 'PASS' : 'PENDING',
+                    time: timings.analysis_ms !== undefined ? `${timings.analysis_ms}ms` : (timings.analysis !== undefined ? `${timings.analysis}ms` : (hasData ? 'Verified' : 'Awaiting Data'))
+                },
+                {
+                    name: 'Multi-Layer Investigation Graph Build',
+                    status: hasData ? 'PASS' : 'PENDING',
+                    time: timings.graph_build_ms !== undefined ? `${timings.graph_build_ms}ms` : (timings.graph_compilation !== undefined ? `${timings.graph_compilation}ms` : (hasData ? 'Verified' : 'Awaiting Data'))
+                },
+                {
+                    name: 'In-Memory Graph Cache Invalidation',
+                    status: hasData ? 'PASS' : 'PENDING',
+                    time: timings.total_ms !== undefined ? `${timings.total_ms}ms total` : (timings.total !== undefined ? `${timings.total}ms total` : (hasData ? 'Active' : 'Standby'))
+                }
+            ];
+
+            setTestResults(diagnosticPhases);
+        } catch (err) {
+            console.error('Pipeline check failed:', err);
+            setTestResults([
+                { name: 'Dataset Pipeline Diagnostics', status: 'FAIL', time: 'Offline' }
+            ]);
+        } finally {
+            setRunningTests(false);
         }
-        
-        setRunningTests(false);
     };
 
     const handleResolution = (action: 'flag' | 'export' | 'clean') => {
-        const message = action === 'flag' ? "Manual Flag applied to target entity graph." : 
-                       action === 'export' ? "Investigative lead exported to report queue." : 
-                       "Record cleared. Anomaly suppressed.";
+        const message = action === 'flag' ? "Manual Flag applied to target entity graph." :
+            action === 'export' ? "Investigative lead exported to report queue." :
+                "Record cleared. Anomaly suppressed.";
         alert(message);
     };
 
     const fetchData = async (isInitial = false) => {
         try {
-            try {
-                if (isInitial) setEntityLoading(true);
-                const response = await api.getMuleStats();
-                setEntityStats({
-                    totalEntities: response.total_accounts ?? 12500,
-                    legitimate: response.labels?.LEGITIMATE ?? 10400,
-                    suspicious: response.labels?.SUSPICIOUS ?? 1760,
-                    anomalous: response.labels?.MULE_SUSPECTED ?? 340,
-                });
-            } catch {
-                setEntityStats({
-                    totalEntities: 12500,
-                    legitimate: 10400,
-                    suspicious: 1760,
-                    anomalous: 340,
-                });
-            } finally {
-                if (isInitial) setEntityLoading(false);
-            }
+            if (isInitial) setEntityLoading(true);
+            const active = await api.getActiveDataset();
+            setActiveDataset(active);
         } catch (error) {
-            console.error(error);
+            console.error('Failed to fetch dataset status:', error);
+            setActiveDataset(null);
+        } finally {
+            if (isInitial) setEntityLoading(false);
         }
     };
 
@@ -909,19 +928,59 @@ const Dashboard = () => {
         setEntityTableError(null);
 
         try {
-            const mockRows: EntityRiskRow[] = [
-                { accountId: "bc1qxy2kgdygJR8992XKPZ", classification: "ANOMALOUS", probability: 0.94, riskScore: 94.2, riskLevel: "CRITICAL", keySignal: "Rapid value splitting", lastActivity: new Date().toISOString() },
-                { accountId: "1A1zP1eP5QGefi2DMPTfTL", classification: "SUSPICIOUS", probability: 0.78, riskScore: 78.5, riskLevel: "HIGH", keySignal: "Mixer involvement", lastActivity: new Date().toISOString() },
-                { accountId: "3J98t1WpEZ73CNmQviecrnyi", classification: "SUSPICIOUS", probability: 0.65, riskScore: 65.0, riskLevel: "MEDIUM", keySignal: "High fan-out degree", lastActivity: new Date().toISOString() },
-                { accountId: "bc1q9v8374ykhd8329xklz00", classification: "LEGITIMATE", probability: 0.12, riskScore: 12.4, riskLevel: "LOW", keySignal: "Standard merchant wallet", lastActivity: new Date().toISOString() }
-            ];
-            setEntityRiskRows(mockRows);
+            const alerts = await api.getAlerts({ limit: 100 });
+            if (alerts && alerts.length > 0) {
+                const rows: EntityRiskRow[] = alerts.map((a) => {
+                    const address = a.wallet_address || a.account_id || 'Unknown';
+                    const classification = a.classification || (a.risk_level === 'CRITICAL' || a.risk_level === 'HIGH' ? 'SUSPICIOUS' : 'LEGITIMATE');
+                    const riskScore = typeof a.risk_score === 'number' ? a.risk_score : 0;
+                    const probability = typeof a.mule_probability === 'number' ? a.mule_probability : (riskScore / 100);
+                    const riskLevel = a.risk_level || (riskScore >= 80 ? 'CRITICAL' : riskScore >= 60 ? 'HIGH' : riskScore >= 40 ? 'MEDIUM' : 'LOW');
+                    const keySignal = a.primary_reason || a.reason || 'Anomalous pattern identified by unsupervised ML';
+                    const lastActivity = a.timestamp || 'Recorded';
+
+                    return {
+                        accountId: address,
+                        classification,
+                        probability,
+                        riskScore,
+                        riskLevel,
+                        keySignal,
+                        lastActivity,
+                    };
+                });
+                setEntityRiskRows(rows);
+            } else {
+                setEntityRiskRows([]);
+            }
         } catch (error) {
-            console.error(error);
+            console.error('Failed to load entity risk records from alerts API:', error);
             setEntityRiskRows([]);
             setEntityTableError('Unable to load entity risk records.');
         } finally {
             if (isInitial) setEntityTableLoading(false);
+        }
+    };
+
+    const handleDatasetUploadSuccess = async (uploadRes: DatasetUploadResponse) => {
+        await fetchData(false);
+        await fetchEntityRiskTable(false);
+        await loadGraphStats();
+        await initializeNetworkGraph();
+        if (uploadRes.analysis_summary?.anomalies_detected && uploadRes.analysis_summary.anomalies_detected > 0) {
+            try {
+                const alerts = await api.getAlerts({ limit: 1 });
+                if (alerts.length > 0 && alerts[0].wallet_address) {
+                    const topWallet = alerts[0].wallet_address;
+                    setSelectedAccountForInvestigation(topWallet);
+                    localStorage.setItem('selected_investigation_wallet', topWallet);
+                    const canonical = `wallet:${topWallet}`;
+                    setActiveCenterEntity(canonical);
+                    await loadSubgraph(canonical, 1, 100);
+                }
+            } catch (err) {
+                console.warn('Could not set top alert as center entity:', err);
+            }
         }
     };
 
@@ -944,8 +1003,8 @@ const Dashboard = () => {
                 return (a.probability - b.probability) * direction;
             }
             if (entitySort.key === 'lastActivity') {
-                const aTime = a.lastActivity === 'Unknown' ? 0 : new Date(a.lastActivity).getTime();
-                const bTime = b.lastActivity === 'Unknown' ? 0 : new Date(b.lastActivity).getTime();
+                const aTime = !a.lastActivity || a.lastActivity === 'Unknown' || isNaN(new Date(a.lastActivity).getTime()) ? 0 : new Date(a.lastActivity).getTime();
+                const bTime = !b.lastActivity || b.lastActivity === 'Unknown' || isNaN(new Date(b.lastActivity).getTime()) ? 0 : new Date(b.lastActivity).getTime();
                 return (aTime - bTime) * direction;
             }
             return (a.riskScore - b.riskScore) * direction;
@@ -1010,7 +1069,7 @@ const Dashboard = () => {
     return (
         <div className="flex h-screen bg-[#F8FAFC] text-[#1e293b] font-sans overflow-hidden">
             {/* SIDEBAR */}
-            <aside 
+            <aside
                 className={`flex-shrink-0 bg-[#002A24] text-white transition-all duration-300 ease-in-out z-50 ${sidebarOpen ? 'w-[280px]' : 'w-20'}`}
             >
                 <div className="h-full flex flex-col p-4">
@@ -1062,7 +1121,7 @@ const Dashboard = () => {
 
                     <div className="mt-auto border-t border-white/10 pt-4 relative" ref={sidebarProfileRef}>
                         {sidebarProfileOpen && (
-                            <motion.div 
+                            <motion.div
                                 initial={{ opacity: 0, y: -10, scale: 0.95 }}
                                 animate={{ opacity: 1, y: 0, scale: 1 }}
                                 className="absolute bottom-full left-0 mb-4 w-[240px] bg-[#001c18] border border-white/10 rounded-2xl shadow-2xl p-4 z-50 overflow-hidden"
@@ -1080,9 +1139,9 @@ const Dashboard = () => {
                                             </div>
                                         </div>
                                     </div>
-                                    
+
                                     <div className="space-y-1">
-                                        <button 
+                                        <button
                                             onClick={logout}
                                             className="w-full flex items-center p-2 hover:bg-rose-500/10 rounded-xl transition-colors text-rose-400 hover:text-rose-300 text-xs font-bold"
                                         >
@@ -1092,8 +1151,8 @@ const Dashboard = () => {
                                 </div>
                             </motion.div>
                         )}
-                        
-                        <button 
+
+                        <button
                             onClick={() => setSidebarProfileOpen(!sidebarProfileOpen)}
                             className={`w-full flex items-center p-2 rounded-2xl transition-all duration-300 border ${sidebarProfileOpen ? 'bg-white/10 border-white/20' : 'border-transparent hover:bg-white/5'}`}
                         >
@@ -1133,10 +1192,10 @@ const Dashboard = () => {
                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Dataset Index</p>
                             <p className="text-xs font-black text-emerald-600">DATASET INDEX OPTIMAL</p>
                         </div>
-                        
+
                         {/* Profile Dropdown */}
                         <div className="relative" ref={profileRef}>
-                            <button 
+                            <button
                                 onClick={() => setProfileOpen(!profileOpen)}
                                 className="flex items-center space-x-3 p-1 rounded-full border border-slate-200 hover:border-[#FF4F00]/50 transition-all bg-white shadow-sm"
                             >
@@ -1147,7 +1206,7 @@ const Dashboard = () => {
                             </button>
 
                             {profileOpen && (
-                                <motion.div 
+                                <motion.div
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     className="absolute right-0 mt-3 w-64 bg-white/90 backdrop-blur-2xl border border-slate-200 rounded-2xl shadow-2xl p-4 z-50 ring-1 ring-black/5"
@@ -1157,7 +1216,7 @@ const Dashboard = () => {
                                         <p className="text-sm font-black text-[#002A24]">{user.id}</p>
                                         <p className="text-[10px] text-slate-500 font-medium capitalize">Analyst Console</p>
                                     </div>
-                                    <button 
+                                    <button
                                         onClick={logout}
                                         className="w-full flex items-center space-x-2 p-2 hover:bg-rose-50 rounded-xl text-rose-600 transition-colors"
                                     >
@@ -1195,7 +1254,7 @@ const Dashboard = () => {
                     {/* VIEW: OVERVIEW */}
                     {activeTab === 'overview' && (
                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="flex justify-between items-end mb-10">
+                            <div className="flex justify-between items-end mb-8">
                                 <div>
                                     <h1 className="text-4xl font-black text-[#002A24] mb-2">Investigation Overview</h1>
                                     <p className="text-slate-500 flex items-center font-medium">
@@ -1203,37 +1262,97 @@ const Dashboard = () => {
                                         Bitcoin Transaction Traffic & Anomaly Analysis Suite
                                     </p>
                                 </div>
-                                <button 
-                                    onClick={runDiagnostics} 
-                                    disabled={runningTests}
-                                    className={`px-10 py-4 rounded-2xl font-black tracking-widest uppercase text-xs flex items-center transition-all shadow-xl hover:translate-y-[-2px] active:translate-y-[0] ${runningTests ? 'bg-slate-300 cursor-not-allowed text-white' : 'bg-[#FF4F00] text-white hover:shadow-[0_10px_30px_rgba(255,79,0,0.3)]'}`}
-                                >
-                                    <Play className={`w-4 h-4 mr-2 ${runningTests ? 'animate-pulse' : ''}`} />
-                                    {runningTests ? 'Processing Pipeline...' : 'Run Pipeline Check'}
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => setImportModalOpen(true)}
+                                        className="px-6 py-4 rounded-2xl font-black tracking-widest uppercase text-xs flex items-center transition-all bg-white border-2 border-slate-200 text-[#002A24] hover:border-[#FF4F00] shadow-sm hover:shadow-md hover:translate-y-[-2px] active:translate-y-[0]"
+                                    >
+                                        <Upload className="w-4 h-4 mr-2 text-[#FF4F00]" />
+                                        Import Dataset
+                                    </button>
+                                    <button
+                                        onClick={runDiagnostics}
+                                        disabled={runningTests}
+                                        className={`px-8 py-4 rounded-2xl font-black tracking-widest uppercase text-xs flex items-center transition-all shadow-xl hover:translate-y-[-2px] active:translate-y-[0] ${runningTests ? 'bg-slate-300 cursor-not-allowed text-white' : 'bg-[#FF4F00] text-white hover:shadow-[0_10px_30px_rgba(255,79,0,0.3)]'}`}
+                                    >
+                                        <Play className={`w-4 h-4 mr-2 ${runningTests ? 'animate-pulse' : ''}`} />
+                                        {runningTests ? 'Evaluating Pipeline...' : 'Run Pipeline Check'}
+                                    </button>
+                                </div>
                             </div>
+
+                            {activeDataset?.has_dataset ? (
+                                <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between shadow-sm animate-in fade-in">
+                                    <div className="flex items-center gap-3">
+                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-800">
+                                            <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
+                                            Dataset Ready
+                                        </span>
+                                        <span className="text-xs font-mono font-bold text-slate-800">
+                                            {activeDataset.filename || 'Active Dataset'}
+                                        </span>
+                                        <span className="text-xs text-slate-400">•</span>
+                                        <span className="text-xs text-slate-600 font-medium">
+                                            {activeDataset.total_transactions.toLocaleString()} txs, {activeDataset.total_wallets.toLocaleString()} wallets normalized
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-xs font-mono text-slate-500">
+                                        <span>Clusters: <strong className="text-[#002A24]">{activeDataset.cluster_count}</strong></span>
+                                        <span>•</span>
+                                        <span>Graph: <strong className="text-[#002A24]">{activeDataset.graph_nodes.toLocaleString()}</strong> nodes</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="mb-6 p-6 bg-amber-50/70 border border-amber-200 rounded-3xl flex items-center justify-between shadow-sm animate-in fade-in">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
+                                            <Database className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-100 text-amber-800">
+                                                    No Dataset Loaded
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-slate-600 mt-0.5">
+                                                System ready for forensic Bitcoin transaction ingest. Select a CSV/JSON file or load the SIH benchmark.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setImportModalOpen(true)}
+                                        className="px-5 py-2.5 bg-[#FF4F00] text-white text-xs font-black uppercase tracking-wider rounded-xl shadow hover:bg-[#E04500] transition-colors shrink-0"
+                                    >
+                                        Import Dataset Now
+                                    </button>
+                                </div>
+                            )}
 
                             <div className="mb-8 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
                                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_6px_32px_rgba(147,111,173,0.12)] border-l-8 border-[#FF4F00]">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Wallets Discovered</p>
-                                    <h3 className="text-4xl font-black text-[#002A24]">{entityLoading ? '...' : entityStats.totalEntities ?? 14280}</h3>
+                                    <h3 className="text-4xl font-black text-[#002A24]">{entityLoading ? '...' : activeDataset?.has_dataset ? activeDataset.total_wallets.toLocaleString() : '—'}</h3>
+                                    <p className="text-xs text-slate-400 font-medium mt-1">{activeDataset?.has_dataset ? `${activeDataset.cluster_count} behavioral clusters` : 'Awaiting dataset'}</p>
                                 </div>
                                 <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_6px_32px_rgba(147,111,173,0.12)] border-l-8 border-emerald-500">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Standard Wallets</p>
-                                    <h3 className="text-4xl font-black text-[#002A24]">{entityLoading ? '...' : entityStats.legitimate ?? 12100}</h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Transactions Processed</p>
+                                    <h3 className="text-4xl font-black text-[#002A24]">{entityLoading ? '...' : activeDataset?.has_dataset ? activeDataset.total_transactions.toLocaleString() : '—'}</h3>
+                                    <p className="text-xs text-slate-400 font-medium mt-1">{activeDataset?.has_dataset ? 'Relational DuckDB & Parquet' : 'Awaiting dataset'}</p>
                                 </div>
-                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_6px_32px_rgba(147,111,173,0.12)] border-l-8 border-[#FF4F00]">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Suspicious Patterns</p>
-                                    <h3 className="text-4xl font-black text-[#FF4F00]">{entityLoading ? '...' : entityStats.suspicious ?? 1840}</h3>
+                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_6px_32px_rgba(147,111,173,0.12)] border-l-8 border-sky-500">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Network Entities / Graph Nodes</p>
+                                    <h3 className="text-4xl font-black text-sky-600">{entityLoading ? '...' : activeDataset?.has_dataset ? activeDataset.graph_nodes.toLocaleString() : '—'}</h3>
+                                    <p className="text-xs text-slate-400 font-medium mt-1">{activeDataset?.has_dataset ? `${activeDataset.graph_edges.toLocaleString()} relational edges` : 'Graph not compiled'}</p>
                                 </div>
-                                <div className="bg-[#002A24] p-6 rounded-3xl shadow-xl">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-1">High-Risk Anomalies</p>
-                                    <h3 className="text-4xl font-black text-white">{entityLoading ? '...' : entityStats.anomalous ?? 340}</h3>
+                                <div className="bg-[#002A24] p-6 rounded-3xl shadow-xl border-l-8 border-[#FF4F00]">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-1">High-Risk & Anomalous Leads</p>
+                                    <h3 className="text-4xl font-black text-white">{entityLoading ? '...' : activeDataset?.has_dataset ? (activeDataset.anomalies_detected ?? activeDataset.high_risk_leads).toLocaleString() : '—'}</h3>
+                                    <p className="text-xs text-emerald-300 font-medium mt-1">{activeDataset?.has_dataset ? `${activeDataset.critical_risk_leads} critical priority leads` : 'Awaiting dataset'}</p>
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                 {testResults.length === 0 && !runningTests ? (
+                                {testResults.length === 0 && !runningTests ? (
                                     Array(6).fill(0).map((_, i) => (
                                         <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 opacity-40">
                                             <div className="h-4 w-32 bg-slate-200 rounded animate-pulse mb-4"></div>
@@ -1243,8 +1362,8 @@ const Dashboard = () => {
                                 ) : (
                                     <>
                                         {testResults.map((test, idx) => (
-                                            <motion.div 
-                                                key={idx} 
+                                            <motion.div
+                                                key={idx}
                                                 initial={{ opacity: 0, x: -20 }}
                                                 animate={{ opacity: 1, x: 0 }}
                                                 className={`bg-white p-6 rounded-2xl border-l-8 transition-all duration-300 hover:scale-[1.02] shadow-[0_6px_32px_rgba(147,111,173,0.12)] hover:shadow-[0_8px_40px_rgba(147,111,173,0.20)] ${test.status === 'PASS' ? 'border-emerald-500' : 'border-rose-500'}`}
@@ -1303,8 +1422,8 @@ const Dashboard = () => {
                                         <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">Anomaly Sensitivity Threshold</span>
                                         <span className="text-[10px] font-mono font-bold text-[#FF4F00]">{anomalyThreshold.toFixed(2)}</span>
                                     </div>
-                                    <input 
-                                        type="range" min="0" max="1" step="0.05" value={anomalyThreshold} 
+                                    <input
+                                        type="range" min="0" max="1" step="0.05" value={anomalyThreshold}
                                         onChange={(e) => setAnomalyThreshold(parseFloat(e.target.value))}
                                         className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#FF4F00]"
                                     />
@@ -1330,8 +1449,8 @@ const Dashboard = () => {
                                             <Loader2 className="w-3.5 h-3.5 text-emerald-500 animate-spin" />
                                         </div>
                                     ) : graphSearchQuery ? (
-                                        <button 
-                                            onClick={() => setGraphSearchQuery('')} 
+                                        <button
+                                            onClick={() => setGraphSearchQuery('')}
                                             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                                         >
                                             <X className="w-3.5 h-3.5" />
@@ -1358,12 +1477,11 @@ const Dashboard = () => {
                                                         <span className="text-xs font-mono text-white truncate block">{res.label}</span>
                                                     </div>
                                                     {res.risk_level && (
-                                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
-                                                            res.risk_level === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/40' :
-                                                            res.risk_level === 'HIGH' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' :
-                                                            res.risk_level === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' :
-                                                            'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                                                        }`}>
+                                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${res.risk_level === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/40' :
+                                                                res.risk_level === 'HIGH' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40' :
+                                                                    res.risk_level === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' :
+                                                                        'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                                            }`}>
                                                             {res.risk_level}
                                                         </span>
                                                     )}
@@ -1382,9 +1500,8 @@ const Dashboard = () => {
                                                     setGraphHops(h);
                                                     if (activeCenterEntity) loadSubgraph(activeCenterEntity, h, 100);
                                                 }}
-                                                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                                                    graphHops === h ? 'bg-[#002A24] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                                                }`}
+                                                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${graphHops === h ? 'bg-[#002A24] text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                                                    }`}
                                             >
                                                 {h}-Hop
                                             </button>
@@ -1392,11 +1509,10 @@ const Dashboard = () => {
                                     </div>
                                     <button
                                         onClick={() => setShowPathInvestigator(prev => !prev)}
-                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
-                                            showPathInvestigator || isPathMode
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${showPathInvestigator || isPathMode
                                                 ? 'bg-[#FF4F00] text-white shadow-md'
                                                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                                        }`}
+                                            }`}
                                         title="Find Connection Between Entities"
                                     >
                                         <GitFork className="w-3.5 h-3.5" />
@@ -1446,7 +1562,7 @@ const Dashboard = () => {
                             )}
 
                             {/* 3D FORCE GRAPH CANVAS */}
-                            <div 
+                            <div
                                 className="w-full h-[65vh] bg-[#001c18] rounded-[40px] relative overflow-hidden shadow-2xl border-8 border-white group"
                                 ref={graphContainerRef}
                             >
@@ -1574,21 +1690,19 @@ const Dashboard = () => {
                                         {/* Panel Header */}
                                         <div className="p-5 border-b border-white/10 flex items-center justify-between bg-black/20">
                                             <div className="flex items-center space-x-2">
-                                                <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${
-                                                    selectedGraphNode.type === 'wallet' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                                                    selectedGraphNode.type === 'transaction' || selectedGraphNode.type === 'tx' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' :
-                                                    selectedGraphNode.type === 'ip' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
-                                                    'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                                                }`}>
+                                                <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${selectedGraphNode.type === 'wallet' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                                                        selectedGraphNode.type === 'transaction' || selectedGraphNode.type === 'tx' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' :
+                                                            selectedGraphNode.type === 'ip' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+                                                                'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                                                    }`}>
                                                     {selectedGraphNode.type}
                                                 </span>
                                                 {selectedGraphNode.risk_level && (
-                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${
-                                                        selectedGraphNode.risk_level === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                                                        selectedGraphNode.risk_level === 'HIGH' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' :
-                                                        selectedGraphNode.risk_level === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                                                        'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                                    }`}>
+                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${selectedGraphNode.risk_level === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                                                            selectedGraphNode.risk_level === 'HIGH' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' :
+                                                                selectedGraphNode.risk_level === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                                                                    'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                                        }`}>
                                                         {selectedGraphNode.risk_level} RISK
                                                     </span>
                                                 )}
@@ -1632,12 +1746,11 @@ const Dashboard = () => {
                                                     </div>
                                                     <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
                                                         <div
-                                                            className={`h-full rounded-full ${
-                                                                selectedGraphNode.risk_score >= 80 ? 'bg-red-500' :
-                                                                selectedGraphNode.risk_score >= 60 ? 'bg-orange-500' :
-                                                                selectedGraphNode.risk_score >= 40 ? 'bg-amber-500' :
-                                                                'bg-emerald-500'
-                                                            }`}
+                                                            className={`h-full rounded-full ${selectedGraphNode.risk_score >= 80 ? 'bg-red-500' :
+                                                                    selectedGraphNode.risk_score >= 60 ? 'bg-orange-500' :
+                                                                        selectedGraphNode.risk_score >= 40 ? 'bg-amber-500' :
+                                                                            'bg-emerald-500'
+                                                                }`}
                                                             style={{ width: `${Math.min(100, Math.max(0, selectedGraphNode.risk_score))}%` }}
                                                         />
                                                     </div>
@@ -1763,7 +1876,7 @@ const Dashboard = () => {
                             {/* INTERACTIVE THREAT RESOLUTION PANEL */}
                             <div className="mt-8 bg-[#002A24]/90 backdrop-blur-xl border border-white/10 p-8 rounded-[40px] shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-bottom-4">
                                 <div className="absolute top-0 right-0 w-64 h-64 bg-red-500/5 rounded-full blur-3xl -mr-20 -mt-20"></div>
-                                
+
                                 <div className="flex flex-col md:flex-row items-center justify-between gap-8 relative z-10">
                                     <div className="max-w-xl text-center md:text-left">
                                         <div className="flex items-center justify-center md:justify-start space-x-3 mb-3">
@@ -1777,19 +1890,19 @@ const Dashboard = () => {
                                     </div>
 
                                     <div className="flex flex-wrap items-center justify-center gap-4">
-                                        <button 
+                                        <button
                                             onClick={() => handleResolution('flag')}
                                             className="px-6 py-4 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border border-white/10 shadow-lg"
                                         >
                                             Manual Flag
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={() => handleResolution('export')}
                                             className="px-6 py-4 bg-[#FF4F00] hover:bg-[#e04500] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl shadow-[#FF4F00]/20"
                                         >
                                             Export to Lead Queue
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={() => handleResolution('clean')}
                                             className="px-6 py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl shadow-emerald-500/20"
                                         >
@@ -1910,7 +2023,7 @@ const Dashboard = () => {
                                                             <td className="px-5 py-4 text-xs font-black text-[#002A24]">{row.riskScore.toFixed(1)}</td>
                                                             <td className="px-5 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${riskLevelStyle}`}>{row.riskLevel}</span></td>
                                                             <td className="px-5 py-4 text-xs font-medium text-slate-600">{row.keySignal}</td>
-                                                            <td className="px-5 py-4 text-xs font-medium text-slate-600">{row.lastActivity === 'Unknown' ? 'Unknown' : new Date(row.lastActivity).toISOString().slice(0, 19).replace('T', ' ')}</td>
+                                                            <td className="px-5 py-4 text-xs font-medium text-slate-600">{row.lastActivity && row.lastActivity !== 'Unknown' && row.lastActivity !== 'Recorded' && !isNaN(new Date(row.lastActivity).getTime()) ? new Date(row.lastActivity).toISOString().slice(0, 19).replace('T', ' ') : (row.lastActivity || 'Recorded')}</td>
                                                         </tr>
                                                     );
                                                 })}
@@ -1928,11 +2041,18 @@ const Dashboard = () => {
                     {/* VIEW: REPORTS & SYSTEM IMPACT */}
                     {activeTab === 'reports' && (
                         <div className="bg-white/40 backdrop-blur-xl min-h-full rounded-[40px] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
-                             <ImpactDashboard />
-                             <IntelligenceTrends />
+                            <ImpactDashboard />
+                            <IntelligenceTrends />
                         </div>
                     )}
                 </div>
+
+                {/* Import Dataset Modal */}
+                <DatasetImportModal
+                    isOpen={importModalOpen}
+                    onClose={() => setImportModalOpen(false)}
+                    onSuccess={handleDatasetUploadSuccess}
+                />
             </main>
         </div>
     );

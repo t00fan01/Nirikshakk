@@ -47,6 +47,13 @@ _MEMORY_GRAPH_CACHE: Optional[nx.DiGraph] = None
 _MEMORY_STATS_CACHE: Optional[Dict[str, Any]] = None
 
 
+def invalidate_graph_cache() -> None:
+    """Clear in-memory cached graph and stats singletons to force fresh reload/rebuild."""
+    global _MEMORY_GRAPH_CACHE, _MEMORY_STATS_CACHE
+    _MEMORY_GRAPH_CACHE = None
+    _MEMORY_STATS_CACHE = None
+
+
 def get_graph_dir(custom_dir: Optional[Union[str, Path]] = None) -> Path:
     """Return graph directory Path, creating it if it does not exist."""
     target_dir = Path(custom_dir) if custom_dir else DEFAULT_GRAPH_DIR

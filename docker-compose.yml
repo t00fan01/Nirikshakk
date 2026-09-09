@@ -1,0 +1,48 @@
+# ==============================================================================
+# NIRIKSHAK AI — SIH26146 Docker Compose Deployment
+# AI-Powered Monitoring & Analysis of Bitcoin Transaction Traffic
+# Offline Linux & Native Container Architecture
+# ==============================================================================
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: nirikshak-backend:latest
+    container_name: nirikshak_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Bind mount host backend/data directory for persistent datasets and graph artifacts
+      - ./backend/data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - nirikshak-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: nirikshak-frontend:latest
+    container_name: nirikshak_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - nirikshak-network
+
+networks:
+  nirikshak-network:
+    driver: bridge

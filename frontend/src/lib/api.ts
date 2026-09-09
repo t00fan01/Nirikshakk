@@ -40,6 +40,33 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    let message = text || `Request failed: ${response.status}`;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.detail) message = parsed.detail;
+    } catch {
+      // not JSON
+    }
+    const error = new Error(message);
+    (error as { status?: number }).status = response.status;
+    throw error;
+  }
+
+  return response.json() as Promise<T>;
+}
+
 export const api = {
   getMuleStats: () => apiGet<{ total_accounts?: number; labels?: Record<string, number> }>('/api/mule/stats'),
   getWebSocketTicket: () => apiPost<{ ticket: string }>('/api/auth/ws-ticket', {}),
@@ -101,7 +128,89 @@ export const api = {
     apiGet<WalletClusterDetailResponse>(`/api/clusters/wallet/${encodeURIComponent(walletId)}`),
   getSimilarWallets: (walletId: string, topN: number = 5) =>
     apiGet<SimilarWalletsResponse>(`/api/clusters/similar/${encodeURIComponent(walletId)}?top_n=${topN}`),
+
+  // Dataset Lifecycle & Pipeline API (Hackathon Demo Mode)
+  uploadDataset: (file: File) =>
+    apiUpload<DatasetUploadResponse>('/api/datasets/upload', file),
+  loadBenchmarkDataset: () =>
+    apiPost<DatasetUploadResponse>('/api/datasets/load-benchmark', {}),
+  getActiveDataset: () =>
+    apiGet<ActiveDatasetStatus>('/api/datasets/active'),
+  getDatasetStats: () =>
+    apiGet<DatasetStatsResponse>('/api/stats'),
+  getAnalysisStatus: () =>
+    apiGet<AnalysisStatusResponse>('/api/analysis/status'),
 };
+
+export interface StorageInfo {
+  normalized: boolean;
+  storage_dir: string;
+  transactions_file: string;
+  wallets_file: string;
+  network_observations_file: string;
+  table_counts: Record<string, number>;
+}
+
+export interface DatasetUploadResponse {
+  filename: string;
+  detected_format: string;
+  total_rows: number;
+  valid_rows: number;
+  rejected_rows: number;
+  validation_status: string;
+  pipeline_status: string;
+  stage_timings_ms: Record<string, number>;
+  analysis_summary?: {
+    wallets_analyzed: number;
+    anomalies_detected: number;
+    critical_risk_leads: number;
+    high_risk_leads: number;
+    cluster_count: number;
+    duration_seconds: number;
+  } | null;
+  graph_summary?: {
+    total_nodes: number;
+    total_edges: number;
+    wallet_nodes: number;
+    transaction_nodes: number;
+  } | null;
+  storage?: StorageInfo | null;
+}
+
+export interface ActiveDatasetStatus {
+  has_dataset: boolean;
+  filename?: string | null;
+  detected_format?: string | null;
+  total_transactions: number;
+  total_wallets: number;
+  anomalies_detected: number;
+  high_risk_leads: number;
+  critical_risk_leads: number;
+  cluster_count: number;
+  graph_nodes: number;
+  graph_edges: number;
+  stage_timings_ms: Record<string, number>;
+  analyzed_at?: string | null;
+}
+
+export interface DatasetStatsResponse {
+  transactions: number;
+  wallets: number;
+  network_observations: number;
+  storage_format: string;
+  files: Record<string, string>;
+}
+
+export interface AnalysisStatusResponse {
+  has_analysis: boolean;
+  analyzed_at?: string | null;
+  wallets_analyzed?: number;
+  anomalies_detected?: number;
+  high_risk_leads?: number;
+  critical_risk_leads?: number;
+  model_type?: string;
+  cluster_count?: number;
+}
 
 export interface WalletSummary {
   address: string;

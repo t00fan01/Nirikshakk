@@ -8,7 +8,12 @@ const Footer = () => {
 
             <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center relative z-10">
                 <div className="mb-8 md:mb-0">
-                    <h2 className="text-3xl font-['Playfair_Display'] text-white tracking-[0.2em] mb-2 font-bold">NIRIKSHAK</h2>
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="bg-white p-1 rounded-xl shadow-md flex-shrink-0 flex items-center justify-center">
+                            <img src="/logo.png" alt="NIRIKSHAK Logo" className="w-8 h-8 object-contain" />
+                        </div>
+                        <h2 className="text-3xl font-['Playfair_Display'] text-white tracking-[0.2em] font-bold">NIRIKSHAK</h2>
+                    </div>
                     <p className="text-slate-400 text-sm font-medium tracking-wide">Bitcoin Transaction Intelligence &bull; AI Investigation Platform</p>
                     <p className="text-slate-500 text-xs mt-4 max-w-sm">An offline AI-powered Bitcoin transaction investigation platform for analyzing transaction traffic, discovering suspicious entities, and tracing fund flows.</p>
                 </div>
@@ -23,7 +28,7 @@ const Footer = () => {
                     <div className="pt-6 border-t border-white/10 w-full md:w-auto text-left md:text-right">
                         <p className="text-xs text-slate-500 font-mono tracking-wider">
                             ENGINEERED BY <br className="md:hidden" />
-                            <span className="text-slate-300 font-bold ml-0 md:ml-2 text-sm text-orange-500/80">Anuj Malviya &bull; Krishna Bhanderiya &bull; Ishan Singh Tomar &bull; Riya Raghuwanshi</span>
+                            <span className="text-slate-300 font-bold ml-0 md:ml-2 text-sm text-orange-500/80">Anuj Malviya &bull; Ishan Singh Tomar &bull; Amay Mishra &bull; Abhishek Verma &bull; Aditi Jain &bull; Lakshya Malviya</span>
                         </p>
                         <p className="text-xs text-slate-600 mt-2">&copy; {new Date().getFullYear()} NIRIKSHAK Platform. All rights reserved.</p>
                     </div>

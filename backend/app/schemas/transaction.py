@@ -96,7 +96,8 @@ class StorageInfo(BaseModel):
 
 class DatasetUploadResponse(BaseModel):
     """
-    Response payload returned upon dataset upload and schema validation.
+    Response payload returned upon dataset upload and schema validation,
+    enriched with real processing telemetry and pipeline readiness.
     """
     filename: str
     detected_format: str
@@ -107,6 +108,28 @@ class DatasetUploadResponse(BaseModel):
     summary: Optional[DatasetSummary] = None
     rejected_details: List[Dict[str, Any]] = Field(default_factory=list)
     storage: Optional[StorageInfo] = None
+    pipeline_status: str = Field("SUCCESS", description="'SUCCESS', 'PARTIAL', or 'FAILED'")
+    stage_timings_ms: Dict[str, float] = Field(default_factory=dict, description="Measured elapsed time in ms per pipeline stage")
+    analysis_summary: Optional[Dict[str, Any]] = Field(None, description="ML analysis summary metrics")
+    graph_summary: Optional[Dict[str, Any]] = Field(None, description="Multi-layer graph summary metrics")
+
+
+class ActiveDatasetStatus(BaseModel):
+    """
+    System-wide active dataset state and processing status.
+    """
+    has_dataset: bool
+    filename: Optional[str] = None
+    total_transactions: int = 0
+    total_wallets: int = 0
+    anomalies_detected: int = 0
+    high_risk_leads: int = 0
+    critical_risk_leads: int = 0
+    cluster_count: int = 0
+    graph_nodes: int = 0
+    graph_edges: int = 0
+    stage_timings_ms: Dict[str, float] = Field(default_factory=dict)
+    analyzed_at: Optional[str] = None
 
 
 class DatasetStatsResponse(BaseModel):

@@ -2,12 +2,6 @@ import { motion } from 'framer-motion';
 
 const teamMembers = [
     {
-        name: "Riya Raghuwanshi",
-        role: "FRONTEND / UI ENGINEER",
-        description: "Developed the seamless framer-motion transitions, loading animations, and dynamic UI interactions.",
-        image: "/Riya Raghuwanshi.jpeg"
-    },
-    {
         name: "Anuj Malviya",
         role: "DATA / BACKEND ENGINEER",
         description: "Engineered the high-throughput asynchronous API pipeline and the core Graph-Network anomaly detection logic.",
@@ -20,10 +14,28 @@ const teamMembers = [
         image: "/Ishan Singh Tomar.png.jpeg"
     },
     {
-        name: "Krishna Bhanderiya",
-        role: "GRAPH / VISUALIZATION ENGINEER",
-        description: "Designed the 3D network topology renderers and multi-layered graph relationship visualization interfaces.",
-        image: "/Krishna Bhanderiya.jpeg"
+        name: "Amay Mishra",
+        role: "CORE ARCHITECT",
+        description: "Contributing to the architecture, design, and investigative capabilities of the NIRIKSHAK platform.",
+        image: "/Amay Mishra.jpeg"
+    },
+    {
+        name: "Abhishek Verma",
+        role: "PLATFORM ENGINEER",
+        description: "Contributing to the system implementation, reliability, and investigative capabilities of the NIRIKSHAK platform.",
+        image: "/Abhishek Verma.jpeg"
+    },
+    {
+        name: "Aditi Jain",
+        role: "RESEARCH & DEVELOPMENT",
+        description: "Contributing to platform research, analytical workflows, and investigative capabilities of the NIRIKSHAK platform.",
+        image: "/Aditi Jain.jpeg"
+    },
+    {
+        name: "Lakshya Malviya",
+        role: "SYSTEMS ARCHITECT",
+        description: "Contributing to system integration, workflow optimization, and investigative capabilities of the NIRIKSHAK platform.",
+        image: "/Lakshya Malviya.jpeg"
     },
 ];
 
@@ -46,13 +58,13 @@ const AboutUs = () => {
                     </p>
                 </motion.div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 w-full">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-y-12 md:gap-x-8 w-full">
                     {teamMembers.map((member, index) => (
                         <motion.div
                             key={member.name}
                             initial={{ opacity: 0, y: 30 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.6, delay: index * 0.15 }}
+                            transition={{ duration: 0.6, delay: index * 0.12 }}
                             className="flex flex-col items-center text-center"
                         >
                             <motion.div
@@ -65,7 +77,8 @@ const AboutUs = () => {
                                     alt={member.name}
                                     className="w-full h-full object-cover rounded-xl filter drop-shadow-md brightness-95"
                                     onError={(e) => {
-                                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${member.name.replace(' ', '+')}&background=006C67&color=fff&size=200`;
+                                        const initials = member.name.split(' ').map((n) => n[0]).join('');
+                                        (e.target as HTMLImageElement).src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%23006C67"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23ffffff" font-family="sans-serif" font-size="28" font-weight="bold">${initials}</text></svg>`;
                                     }}
                                 />
                             </motion.div>
@@ -85,4 +98,3 @@ const AboutUs = () => {
 };
 
 export default AboutUs;
-
