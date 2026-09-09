@@ -20,12 +20,18 @@ import {
     BitcoinInvestigationTransaction,
     EvidenceItem,
     WalletInvestigationResponse,
+    WalletClusterDetailResponse,
 } from '../lib/api';
+import { WalletClusterBadge } from './clustering/WalletClusterBadge';
+import { WalletClusterProfileSection } from './clustering/WalletClusterProfileSection';
+import { SimilarWalletsModal } from './clustering/SimilarWalletsModal';
+import { ClusterDetailModal } from './clustering/ClusterDetailModal';
 
 interface WalletInvestigationProps {
     walletId: string;
     onBack: () => void;
     onExploreInGraph?: (walletAddress: string) => void;
+    onSelectWallet?: (walletAddress: string) => void;
 }
 
 const formatDate = (value?: string | null) => {
@@ -102,7 +108,7 @@ const riskLevelTheme = (level?: string) => {
     }
 };
 
-export default function WalletInvestigation({ walletId, onBack, onExploreInGraph }: WalletInvestigationProps) {
+export default function WalletInvestigation({ walletId, onBack, onExploreInGraph, onSelectWallet }: WalletInvestigationProps) {
     const cleanWallet = useMemo(() => {
         const raw = (walletId || '').trim();
         return raw.startsWith('wallet:') ? raw.slice(7) : raw;
@@ -114,7 +120,14 @@ export default function WalletInvestigation({ walletId, onBack, onExploreInGraph
     const [copiedWallet, setCopiedWallet] = useState<boolean>(false);
     const [copiedTxId, setCopiedTxId] = useState<string | null>(null);
     const [txFilter, setTxFilter] = useState<string>('');
-    const [activeTabSection, setActiveTabSection] = useState<'evidence' | 'transactions' | 'network' | 'graph'>('evidence');
+    const [activeTabSection, setActiveTabSection] = useState<'evidence' | 'transactions' | 'network' | 'graph' | 'clustering'>('evidence');
+
+    // Phase 9 Behavioral Clustering States (Non-blocking)
+    const [clusterData, setClusterData] = useState<WalletClusterDetailResponse | null>(null);
+    const [clusterLoading, setClusterLoading] = useState<boolean>(false);
+    const [clusterError, setClusterError] = useState<string | null>(null);
+    const [isSimilarModalOpen, setIsSimilarModalOpen] = useState<boolean>(false);
+    const [isClusterDetailModalOpen, setIsClusterDetailModalOpen] = useState<boolean>(false);
 
     const fetchDossier = async () => {
         if (!cleanWallet) {
@@ -144,8 +157,30 @@ export default function WalletInvestigation({ walletId, onBack, onExploreInGraph
         }
     };
 
+    const fetchCluster = async () => {
+        if (!cleanWallet) {
+            setClusterData(null);
+            setClusterLoading(false);
+            return;
+        }
+
+        setClusterLoading(true);
+        setClusterError(null);
+        try {
+            const data = await api.getWalletCluster(cleanWallet);
+            setClusterData(data);
+        } catch (err: unknown) {
+            console.warn('Clustering profile not available for wallet:', cleanWallet, err);
+            setClusterData(null);
+            setClusterError('Behavioral clustering is not available for this entity.');
+        } finally {
+            setClusterLoading(false);
+        }
+    };
+
     useEffect(() => {
         fetchDossier();
+        fetchCluster();
     }, [cleanWallet]);
 
     const handleCopy = (text: string, isWallet = false) => {
@@ -335,6 +370,17 @@ export default function WalletInvestigation({ walletId, onBack, onExploreInGraph
                             </div>
                         </div>
                     </div>
+
+                    {/* Behavioral Cluster Archetype Badge */}
+                    <div className="mt-6 pt-5 border-t border-slate-100">
+                        <WalletClusterBadge
+                            clusterData={clusterData}
+                            loading={clusterLoading}
+                            error={clusterError}
+                            onOpenSimilar={() => setIsSimilarModalOpen(true)}
+                            onOpenClusterDetail={() => setIsClusterDetailModalOpen(true)}
+                        />
+                    </div>
                 </div>
 
                 {/* Subcomponent Score Pills */}
@@ -430,6 +476,7 @@ export default function WalletInvestigation({ walletId, onBack, onExploreInGraph
                     { id: 'transactions', label: 'UTXO Transaction Flow', count: dossier.total_transactions },
                     { id: 'network', label: 'Network Observations', count: dossier.total_network_observations },
                     { id: 'graph', label: 'Graph Neighborhood', count: dossier.graph_summary.direct_neighbor_count },
+                    { id: 'clustering', label: 'Behavioral Cluster', count: clusterData ? `C${clusterData.cluster_id}` : '—' },
                 ].map((t) => (
                     <button
                         key={t.id}
@@ -824,6 +871,37 @@ export default function WalletInvestigation({ walletId, onBack, onExploreInGraph
                         </div>
                     </div>
                 </section>
+            )}
+
+            {/* SECTION 5: BEHAVIORAL CLUSTER */}
+            {activeTabSection === 'clustering' && (
+                <WalletClusterProfileSection
+                    clusterData={clusterData}
+                    loading={clusterLoading}
+                    error={clusterError}
+                    onOpenSimilar={() => setIsSimilarModalOpen(true)}
+                    onOpenClusterDetail={() => setIsClusterDetailModalOpen(true)}
+                />
+            )}
+
+            {/* Similar Wallets Modal */}
+            <SimilarWalletsModal
+                isOpen={isSimilarModalOpen}
+                onClose={() => setIsSimilarModalOpen(false)}
+                walletId={cleanWallet}
+                onInvestigateWallet={onSelectWallet}
+                onExploreInGraph={onExploreInGraph}
+            />
+
+            {/* Cluster Detail Modal */}
+            {clusterData && (
+                <ClusterDetailModal
+                    isOpen={isClusterDetailModalOpen}
+                    onClose={() => setIsClusterDetailModalOpen(false)}
+                    clusterId={clusterData.cluster_id}
+                    onInvestigateWallet={onSelectWallet}
+                    onExploreInGraph={onExploreInGraph}
+                />
             )}
         </div>
     );

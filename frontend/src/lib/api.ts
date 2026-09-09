@@ -91,6 +91,16 @@ export const api = {
     apiGet<AlertDetailResponse>(`/api/alerts/${encodeURIComponent(alertId)}`),
   getWalletInvestigation: (walletId: string, txLimit: number = 50, netLimit: number = 50) =>
     apiGet<WalletInvestigationResponse>(`/api/investigations/${encodeURIComponent(walletId)}?tx_limit=${txLimit}&net_limit=${netLimit}`),
+
+  // Phase 9 Behavioral Clustering API
+  getClusters: () =>
+    apiGet<ClusterProfilesResponse>('/api/clusters'),
+  getClusterDetail: (clusterId: number, limit: number = 50, offset: number = 0, sortBy: string = 'distance') =>
+    apiGet<ClusterDetailResponse>(`/api/clusters/${clusterId}?limit=${limit}&offset=${offset}&sort_by=${encodeURIComponent(sortBy)}`),
+  getWalletCluster: (walletId: string) =>
+    apiGet<WalletClusterDetailResponse>(`/api/clusters/wallet/${encodeURIComponent(walletId)}`),
+  getSimilarWallets: (walletId: string, topN: number = 5) =>
+    apiGet<SimilarWalletsResponse>(`/api/clusters/similar/${encodeURIComponent(walletId)}?top_n=${topN}`),
 };
 
 export interface WalletSummary {
@@ -384,3 +394,82 @@ export interface AlertDetailResponse {
   };
 }
 
+// ==========================================
+// Phase 9 Behavioral Wallet Clustering Types
+// ==========================================
+
+export interface ClusterProfile {
+  cluster_id: number;
+  label: string;
+  description: string;
+  wallet_count: number;
+  average_risk_score: number;
+  anomaly_rate: number;
+  centroid_distance_mean: number;
+  centroid_distance_median: number;
+  top_differentiating_features: string[];
+  centroid_summary: Record<string, number>;
+}
+
+export interface ClusteringDiagnostics {
+  k_values: number[];
+  inertias: Record<string, number>;
+  silhouette_scores: Record<string, number>;
+  selected_k: number;
+  selected_k_silhouette: number;
+}
+
+export interface ClusterProfilesResponse {
+  total_clusters: number;
+  total_wallets: number;
+  clustering_algorithm: string;
+  diagnostics: ClusteringDiagnostics;
+  clusters: ClusterProfile[];
+}
+
+export interface WalletClusterAssignment {
+  wallet_address: string;
+  cluster_id: number;
+  cluster_label: string;
+  distance_to_centroid: number;
+  pca_x: number;
+  pca_y: number;
+}
+
+export interface ClusterDetailResponse {
+  cluster: ClusterProfile;
+  total_wallets: number;
+  returned_count: number;
+  offset: number;
+  limit: number;
+  wallets: WalletClusterAssignment[];
+}
+
+export interface WalletClusterDetailResponse {
+  wallet_address: string;
+  cluster_id: number;
+  cluster_label: string;
+  distance_to_centroid: number;
+  pca_x: number;
+  pca_y: number;
+  cluster_profile: ClusterProfile;
+}
+
+export interface SimilarWallet {
+  wallet_address: string;
+  similarity_score: number;
+  similarity_percent: number;
+  cluster_id: number;
+  cluster_label: string;
+  distance_to_centroid: number;
+  shared_behavioral_traits: string[];
+}
+
+export interface SimilarWalletsResponse {
+  target_wallet: string;
+  target_cluster_id: number;
+  target_cluster_label: string;
+  total_candidates: number;
+  returned_count: number;
+  similar_wallets: SimilarWallet[];
+}

@@ -1186,6 +1186,9 @@ const Dashboard = () => {
                                 loadSubgraph(canonicalId, 1, 100);
                                 setActiveTab('network');
                             }}
+                            onSelectWallet={(walletAddress: string) => {
+                                setSelectedAccountForInvestigation(walletAddress);
+                            }}
                         />
                     )}
 
