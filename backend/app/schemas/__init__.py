@@ -22,6 +22,7 @@ from .clustering import (
     SimilarWallet,
     SimilarWalletsResponse,
     WalletClusterAssignment,
+    WalletClusterDetailResponse,
 )
 
 __all__ = [
@@ -44,4 +45,5 @@ __all__ = [
     "SimilarWallet",
     "SimilarWalletsResponse",
     "WalletClusterAssignment",
+    "WalletClusterDetailResponse",
 ]

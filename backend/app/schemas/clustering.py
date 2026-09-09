@@ -55,7 +55,21 @@ class ClusterDetailResponse(BaseModel):
     """Deep inspection of a specific cluster archetype and its member wallets."""
     cluster: ClusterProfile
     total_wallets: int
+    returned_count: int
+    offset: int
+    limit: int
     wallets: List[WalletClusterAssignment]
+
+
+class WalletClusterDetailResponse(BaseModel):
+    """Single wallet's cluster assignment with full cluster profile attached."""
+    wallet_address: str
+    cluster_id: int
+    cluster_label: str
+    distance_to_centroid: float
+    pca_x: float
+    pca_y: float
+    cluster_profile: ClusterProfile
 
 
 class SimilarWallet(BaseModel):

@@ -44,6 +44,7 @@ from app.schemas.clustering import (
     SimilarWallet,
     SimilarWalletsResponse,
     WalletClusterAssignment,
+    WalletClusterDetailResponse,
 )
 
 # 1. Feature Selection: exclude redundant collinear dimensions
@@ -383,6 +384,19 @@ def run_behavioral_clustering(
     return profiles_response, df_clusters
 
 
+def has_clustering_data(analysis_dir: Optional[Union[str, Path]] = None) -> bool:
+    """Returns whether the required clustering artifacts exist and are non-empty."""
+    paths = get_clustering_paths(analysis_dir)
+    clusters_path = paths["clusters"]
+    profiles_path = paths["profiles"]
+    return (
+        clusters_path.exists()
+        and clusters_path.stat().st_size > 0
+        and profiles_path.exists()
+        and profiles_path.stat().st_size > 0
+    )
+
+
 def load_cluster_assignments(
     analysis_dir: Optional[Union[str, Path]] = None,
 ) -> pl.DataFrame:
@@ -422,6 +436,105 @@ def get_wallet_cluster(
         distance_to_centroid=float(r["distance_to_centroid"]),
         pca_x=float(r["pca_x"]),
         pca_y=float(r["pca_y"]),
+    )
+
+
+def get_cluster_detail(
+    cluster_id: int,
+    limit: int = 50,
+    offset: int = 0,
+    sort_by: str = "distance",
+    analysis_dir: Optional[Union[str, Path]] = None,
+) -> Optional[ClusterDetailResponse]:
+    """
+    Retrieve deep inspection of a specific cluster archetype and its paginated member wallets.
+    Sorts deterministically by centroid distance (ascending) or wallet address (lexicographically).
+    """
+    if not has_clustering_data(analysis_dir):
+        raise FileNotFoundError("Clustering artifacts not found. Please run ML analysis first.")
+
+    profiles_resp = load_cluster_profiles(analysis_dir)
+    target_profile: Optional[ClusterProfile] = None
+    for p in profiles_resp.clusters:
+        if p.cluster_id == cluster_id:
+            target_profile = p
+            break
+
+    if target_profile is None:
+        return None
+
+    df_clusters = load_cluster_assignments(analysis_dir)
+    df_cluster = df_clusters.filter(pl.col("cluster_id") == cluster_id)
+    total_wallets = len(df_cluster)
+
+    if sort_by == "address":
+        df_sorted = df_cluster.sort("wallet_address", descending=False)
+    elif sort_by == "distance":
+        df_sorted = df_cluster.sort("distance_to_centroid", descending=False)
+    else:
+        raise ValueError(f"Invalid sort_by '{sort_by}'. Allowed values: 'distance', 'address'.")
+
+    df_paginated = df_sorted.slice(offset, limit)
+    wallets = [
+        WalletClusterAssignment(
+            wallet_address=str(r["wallet_address"]),
+            cluster_id=int(r["cluster_id"]),
+            cluster_label=str(r["cluster_label"]),
+            distance_to_centroid=round(float(r["distance_to_centroid"]), 4),
+            pca_x=round(float(r["pca_x"]), 4),
+            pca_y=round(float(r["pca_y"]), 4),
+        )
+        for r in df_paginated.to_dicts()
+    ]
+
+    return ClusterDetailResponse(
+        cluster=target_profile,
+        total_wallets=total_wallets,
+        returned_count=len(wallets),
+        offset=offset,
+        limit=limit,
+        wallets=wallets,
+    )
+
+
+def get_wallet_cluster_detail(
+    wallet_address: str,
+    analysis_dir: Optional[Union[str, Path]] = None,
+) -> Optional[WalletClusterDetailResponse]:
+    """
+    Retrieve cluster assignment, centroid distance, PCA coordinates,
+    and attached archetype profile for a single wallet.
+    Returns None if wallet does not exist in the clustered population.
+    """
+    if not has_clustering_data(analysis_dir):
+        raise FileNotFoundError("Clustering artifacts not found. Please run ML analysis first.")
+
+    clean_addr = wallet_address.strip()
+    if clean_addr.startswith("wallet:"):
+        clean_addr = clean_addr[7:].strip()
+
+    assignment = get_wallet_cluster(clean_addr, analysis_dir=analysis_dir)
+    if assignment is None:
+        return None
+
+    profiles_resp = load_cluster_profiles(analysis_dir)
+    target_profile: Optional[ClusterProfile] = None
+    for p in profiles_resp.clusters:
+        if p.cluster_id == assignment.cluster_id:
+            target_profile = p
+            break
+
+    if target_profile is None:
+        return None
+
+    return WalletClusterDetailResponse(
+        wallet_address=assignment.wallet_address,
+        cluster_id=assignment.cluster_id,
+        cluster_label=assignment.cluster_label,
+        distance_to_centroid=assignment.distance_to_centroid,
+        pca_x=assignment.pca_x,
+        pca_y=assignment.pca_y,
+        cluster_profile=target_profile,
     )
 
 
