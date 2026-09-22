@@ -1,7 +1,8 @@
 # NIRIKSHAK
 
 ## AI-Powered Monitoring & Analysis of Bitcoin Transaction Traffic
-**Smart India Hackathon 2026 — Problem Statement SIH26146**
+**Smart India Hackathon 2026 — Problem Statement SIH26146**  
+**Engineered by Team Tarang**
 
 ---
 
@@ -37,7 +38,7 @@ Designed specifically for local and air-gapped investigative workstations, NIRIK
 - [Repository Structure](#repository-structure)
 - [Responsible Interpretation & Ethics](#responsible-interpretation--ethics)
 - [Current Limitations & Roadmap](#current-limitations--roadmap)
-- [The Architects (Core Team)](#the-architects-core-team)
+- [The Architects — Team Tarang (Core Team)](#the-architects--team-tarang-core-team)
 - [License](#license)
 
 ---
@@ -488,9 +489,9 @@ NIRIKSHAK is engineered as an investigative decision-support system:
 
 ---
 
-## The Architects (Core Team)
+## The Architects — Team Tarang (Core Team)
 
-NIRIKSHAK was designed and built by **The Architects**:
+NIRIKSHAK was designed and engineered by **Team Tarang** (**The Architects**):
 
 - **Anuj Malviya** — Data / Backend Engineer
 - **Ishan Singh Tomar** — AI / ML Engineer
