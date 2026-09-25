@@ -403,7 +403,7 @@ const Dashboard = () => {
                     {/* Header Logo */}
                     <div className="flex items-center space-x-3 mb-10 px-2 overflow-hidden cursor-pointer" onClick={() => navigate('/')}>
                         <div className="bg-white p-1 rounded-xl shadow-lg flex-shrink-0">
-                            <img src="/logo.png" alt="NIRIKSHAK Logo" className="w-10 h-10 object-contain" />
+                            <img src="/branding/logo.png" alt="NIRIKSHAK Logo" className="w-10 h-10 object-contain" />
                         </div>
                         {sidebarOpen && (
                             <div className="transition-opacity duration-300">

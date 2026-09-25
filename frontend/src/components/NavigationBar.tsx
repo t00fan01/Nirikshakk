@@ -15,7 +15,7 @@ const NavigationBar = () => {
         <nav className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 py-6 px-8 md:px-12 ${scrolled ? 'bg-white/80 backdrop-blur-2xl py-4 shadow-xl border-b border-[#006C67]/5' : 'bg-transparent'}`}>
             <div className="max-w-7xl mx-auto flex items-center justify-between">
                 <Link to="/" className="flex items-center group">
-                    <img src="/logo.png" alt="NIRIKSHAK Logo" className="h-12 md:h-14 w-auto group-hover:scale-105 transition-transform duration-300" />
+                    <img src="/branding/logo.png" alt="NIRIKSHAK Logo" className="h-12 md:h-14 w-auto group-hover:scale-105 transition-transform duration-300" />
                 </Link>
 
                 <div className="hidden md:flex items-center space-x-10">

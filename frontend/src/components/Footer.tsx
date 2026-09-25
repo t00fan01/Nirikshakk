@@ -10,7 +10,7 @@ const Footer = () => {
                 <div className="mb-8 md:mb-0">
                     <div className="flex items-center gap-3 mb-2">
                         <div className="bg-white p-1 rounded-xl shadow-md flex-shrink-0 flex items-center justify-center">
-                            <img src="/logo.png" alt="NIRIKSHAK Logo" className="w-8 h-8 object-contain" />
+                            <img src="/branding/logo.png" alt="NIRIKSHAK Logo" className="w-8 h-8 object-contain" />
                         </div>
                         <h2 className="text-3xl font-['Playfair_Display'] text-white tracking-[0.2em] font-bold">NIRIKSHAK</h2>
                     </div>
