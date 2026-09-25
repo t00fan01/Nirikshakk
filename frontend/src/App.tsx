@@ -28,7 +28,7 @@ const AnimatedRoutes = () => {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />
           <Route path="/register" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/bank-workspace" element={<Navigate to="/dashboard" replace />} />
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </motion.div>

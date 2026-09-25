@@ -8,7 +8,7 @@ import {
   Shapes,
   Activity
 } from "lucide-react";
-import { AnimatedGradient } from "./ui/animated-gradient-with-svg";
+import { AnimatedGradient } from "../ui/animated-gradient-with-svg";
 
 interface BentoCardProps {
   title: string;

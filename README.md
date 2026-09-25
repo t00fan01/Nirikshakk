@@ -1,502 +1,250 @@
 # NIRIKSHAK
 
-## AI-Powered Monitoring & Analysis of Bitcoin Transaction Traffic
-**Smart India Hackathon 2026 — Problem Statement SIH26146**  
-**Engineered by Team Tarang**
+### Bitcoin Transaction Intelligence & Investigative Analysis Platform
 
----
+NIRIKSHAK is designed to analyze Bitcoin transaction and network metadata, connect blockchain entities with network observations, surface anomalous behavior, and provide explainable investigative leads through an analyst-focused interface.
 
-> [!IMPORTANT]
-> **Project Transition Notice:**  
-> NIRIKSHAK is currently being transitioned from the internal hackathon demonstration build into a production-oriented prototype. Final architecture components will be introduced phase by phase.
+## 1. Project Overview
 
-NIRIKSHAK is an offline-capable, AI-driven Bitcoin transaction intelligence and investigative analysis platform. It correlates blockchain-layer transaction metadata (inputs, outputs, amounts, script types, fees) with network-layer observations (IP addresses, ports, Autonomous System Numbers [ASNs], geolocation) to surface prioritized, explainable investigative leads through multi-layer link analysis, unsupervised anomaly detection, and behavioral clustering.
+NIRIKSHAK empowers analysts to conduct rigorous, data-driven investigations on cryptocurrency transactions. It transforms raw blockchain and network intelligence into structured investigative narratives.
 
-Designed specifically for local and air-gapped investigative workstations, NIRIKSHAK runs completely offline without external blockchain RPC nodes, cloud AI services, or third-party tracking APIs.
+## 2. Problem Statement
 
----
+Tracing illicit activities in complex cryptocurrency networks is incredibly difficult without automated intelligence and clear evidence. Existing tools often lack the capability to fuse on-chain transaction data with off-chain network observations efficiently and explainably.
 
-## Table of Contents
+## 3. Why NIRIKSHAK
 
-- [Problem Statement](#problem-statement)
-- [Solution Overview](#solution-overview)
-- [Key Capabilities](#key-capabilities)
-  - [Dataset Ingestion & Validation](#dataset-ingestion--validation)
-  - [Local Analytical Storage](#local-analytical-storage)
-  - [AI Anomaly Detection](#ai-anomaly-detection)
-  - [Evidence-Based Risk Scoring](#evidence-based-risk-scoring)
-  - [Behavioral Clustering](#behavioral-clustering)
-  - [Multi-Layer Investigation Graph](#multi-layer-investigation-graph)
-  - [Network Correlation & Investigative Evidence](#network-correlation--investigative-evidence)
-  - [Investigation Console & Explainability](#investigation-console--explainability)
-  - [Interactive Dashboard](#interactive-dashboard)
-- [System Architecture](#system-architecture)
-- [End-to-End Data Pipeline](#end-to-end-data-pipeline)
-- [Docker & Offline Deployment](#docker--offline-deployment)
-- [System Requirements](#system-requirements)
-- [Quick Start — Native Local Environment](#quick-start--native-local-environment)
-- [Quick Start — Docker Environment](#quick-start--docker-environment)
-- [Live Demo Walkthrough](#live-demo-walkthrough)
-- [Verified Prototype Metrics](#verified-prototype-metrics)
-- [Technical Stack](#technical-stack)
-- [Repository Structure](#repository-structure)
-- [Responsible Interpretation & Ethics](#responsible-interpretation--ethics)
-- [Current Limitations & Roadmap](#current-limitations--roadmap)
-- [The Architects — Team Tarang (Core Team)](#the-architects--team-tarang-core-team)
-- [License](#license)
+NIRIKSHAK provides deterministic intelligence by merging bounded local graph analytics, explainable risk evidence, and structured investigative workflows into a single cohesive platform.
 
----
+## 4. Core Capabilities
 
-## Problem Statement
+- **Dataset Ingestion:** Robust ingestion and normalization of transaction datasets.
+- **Transaction Analysis:** Deep inspection of UTXO transaction flows.
+- **Wallet Investigation:** Comprehensive profiles for individual wallets, including connected paths and risk signals.
+- **Investigation Activity:** Feed of investigative actions and updates on monitored entities.
+- **Graph-Based Investigation Interface:** Interactive 3D Force Graph for exploring local entity neighborhoods.
+- **Transaction and Alert Views:** Detailed tabular views of alerts and transactions.
+- **Dataset Import:** Support for loading benchmark datasets directly via UI.
+- **Dashboard Intelligence Views:** High-level metrics and platform telemetry.
+- **Path Investigation:** Multi-hop causal progression from Target Wallet through UTXO transfers and network metadata.
+- **Reproducible Demo Data:** Deterministic baseline data to demonstrate the platform capabilities offline.
 
-Investigating illicit financial flows across the Bitcoin network poses significant technical and operational hurdles:
+## 5. Final System Architecture
 
-1. **Volume and Pseudonymity:** Bitcoin transactions produce massive transaction volumes. While transaction histories are public on-chain, transaction outputs do not disclose legal identities.
-2. **Obfuscation Techniques:** Entities frequently deploy behavioral evasion strategies—including peeling chains, high-velocity fan-out/fan-in consolidation, address re-use minimization, and rapid multi-hop relay.
-3. **Disjointed Network Telemetry:** Network-layer observations (such as broadcast IPs, relay nodes, ASNs, and geographic origins) are rarely synthesized alongside blockchain UTXO dynamics in a unified investigative interface.
-4. **Black-Box Alert Fatigue:** Traditional rule-based alerts lack statistical context, generate high false-positive rates, and provide little to no mathematical explanation for why an entity was flagged.
-5. **Operational Security & Air-Gapped Environments:** Defense and law enforcement analysts require forensic tools capable of executing in restricted, air-gapped Linux environments without outbound internet access or telemetry leakage.
+**Final Target Architecture**
 
-> **Important Investigative Note:** NIRIKSHAK produces prioritized **behavioral anomaly leads** and **investigative correlation evidence**. It does not assert definitive legal identity, physical entity ownership, or criminal culpability.
-
----
-
-## Solution Overview
-
-NIRIKSHAK addresses SIH26146 through an end-to-end, privacy-preserving analytical pipeline that transforms raw Bitcoin transaction datasets and network observation logs into interactive, explainable intelligence dossiers:
-
-```text
-Raw Dataset (CSV / JSON)
-        │
-        ▼
-[ Schema Validation & Rejection Filtering ]
-        │
-        ▼
-[ Normalization into Columnar Parquet & DuckDB ]
-        │
-        ▼
-[ Behavioral Feature Extraction (24 Numerical Metrics) ]
-        │
-        ▼
-[ Unsupervised Isolation Forest Anomaly Detection ]
-        │
-        ▼
-[ Multi-Component Evidence-Based Risk Scoring (0–100) ]
-        │
-        ▼
-[ Unsupervised K-Means Behavioral Clustering (K=6) ]
-        │
-        ▼
-[ Heterogeneous NetworkX Investigation Graph Assembly ]
-        │
-        ▼
-[ Ranked Investigative Alerts & Explainable Lead Dossiers ]
-        │
-        ▼
-[ Interactive 3D Force-Directed Link Analysis Console ]
+```mermaid
+graph TD
+    A[DATA SOURCES] --> B[FastAPI ingestion layer]
+    B --> C[Polars-based validation / transformation]
+    C --> D[Parquet data layer]
+    D --> E[Analytical storage / query layer]
+    E --> F[ClickHouse]
+    F --> G[Graph intelligence layer]
+    G --> H[Neo4j + Neo4j Graph Data Science]
+    H --> I[Risk / anomaly / entity analysis]
+    I --> J[XGBoost + SHAP]
+    J --> K[Future graph learning]
+    K --> L[PyTorch / PyTorch Geometric]
+    L --> M[Investigation API]
+    M --> N[React + TypeScript analyst interface]
+    N --> O[Cytoscape.js graph investigation]
+    O --> P[Docker / Linux deployment]
 ```
 
----
+*(Note: Distinguish this from the Current Demonstration / Prototype, which utilizes a subset of these technologies for baseline demonstration).*
 
-## Key Capabilities
+## 6. Technology Stack
 
-### Dataset Ingestion & Validation
-- **Supported Formats:** Validated ingestion of CSV and JSON datasets conforming to `schema_v1`.
-- **Schema Validation:** Strict verification of transaction identifiers, input/output address arrays, satoshi amounts, timestamps, IP addresses, ports, ASNs, and countries.
-- **Malformed Record Handling:** Invalid records are isolated and logged without halting execution.
-- *Notice:* XML schema ingestion is scheduled for a future milestone and is not currently implemented.
+### Current Implementation
 
-### Local Analytical Storage
-- **Zero Cloud Persistence:** All processed records are structured locally into compressed Apache Parquet tables (`wallets.parquet`, `transactions.parquet`, `features.parquet`).
-- **DuckDB Query Engine:** High-speed SQL analytical queries across millions of rows with minimal memory footprint.
+- **React**
+- **TypeScript**
+- **Vite**
+- **FastAPI**
+- **Python**
+- **Polars**
+- **Parquet**
+- **Docker**
+- **Linux**
 
-### AI Anomaly Detection
-- **Algorithm:** Unsupervised **Isolation Forest** (100 estimators, deterministic random seed).
-- **Engineered Behavioral Features (24 Metrics):**
-  - *Activity Metrics:* Transaction frequency, unique input/output counterparty counts, total volume sent/received.
-  - *Velocity & Burstiness:* Inter-arrival time variance, burstiness index, active lifespan, rapid-relay indicators.
-  - *Flow Dynamics:* In/out transaction ratio, volume balance, fee ratio, peel-chain fragmentation index.
-  - *Network Diversity:* Unique IP count, unique ASN count, unique country count, Shannon entropy of associated network infrastructure.
-- **Normalized Anomaly Scoring:** Continuous anomaly score between `[0.0, 1.0]`.
+### Final Target Stack
 
-### Evidence-Based Risk Scoring
-- **Score Range:** `0.0` to `100.0` with four distinct priority bands:
-  - **CRITICAL** (Score ≥ 75.0)
-  - **HIGH** (50.0 ≤ Score < 75.0)
-  - **MEDIUM** (25.0 ≤ Score < 50.0)
-  - **LOW** (Score < 25.0)
-- **Mathematical Decomposition:** Combines raw statistical anomaly scores with velocity penalties, peeling-chain heuristics, high-volume concentration, and network-infrastructure risk.
-
-### Behavioral Clustering
-- **Algorithm:** Unsupervised **K-Means clustering** ($K=6$) applied across standardized behavioral feature vectors.
-- **Profiles Discovered:**
-  - *High-Velocity Relay / Peeling Chain Entities*
-  - *High-Volume Consolidation Hubs*
-  - *Dispersed Network Infrastructure Routing*
-  - *Balanced Intermediary Accounts*
-  - *Infrequent Low-Value UTXO Holders*
-  - *Standard End-User Wallets*
-- **Dimensionality Reduction:** 2D and 3D PCA projection for spatial cluster visualization.
-- **Nearest-Neighbor Analysis:** Euclidean distance queries to discover behaviorally similar wallets.
-
-### Multi-Layer Investigation Graph
-- **Heterogeneous Graph Engine:** Built using NetworkX to correlate multi-layer entity types:
-  - **Wallet Nodes** (`wallet:<address>`)
-  - **Transaction Nodes** (`tx:<txid>`)
-  - **IP Nodes** (`ip:<address>`)
-  - **ASN Nodes** (`asn:<number>`)
-  - **Country Nodes** (`country:<code>`)
-- **Typed Relationship Edges:**
-  - `input` (Wallet $\to$ Transaction)
-  - `output` (Transaction $\to$ Wallet)
-  - `network_observation` (Transaction $\leftrightarrow$ IP)
-  - `counterparty` (Heuristic direct wallet-to-wallet flows)
-  - `routed_via` (IP $\to$ ASN)
-  - `located_in` (IP $\to$ Country)
-- **Investigation Bounds:** Subgraph exploration bounded to $1 \le \text{hops} \le 3$ with configurable safety caps (`max_nodes`) to prevent browser rendering degradation.
-
-### Network Correlation & Investigative Evidence
-- Network observations (IP, ASN, Country) are bound to transaction records via transaction IDs observed during network broadcast.
-- **Crucial Disclaimer:** Network telemetry represents *correlation evidence* indicative of broadcast routes or proxy/relay nodes, **not proof of physical wallet ownership**.
-
-### Investigation Console & Explainability
-- **"Why Flagged" Transparent Dossier:** Direct natural-language explanation of primary and contributing anomaly signals (e.g., transaction burst rate, peel-chain sequence, high ASN entropy).
-- **Entity Overview:** Complete balance, lifetime volume, first/last observed timestamps, and behavioral classification.
-- **Associated Infrastructure:** Detailed breakdown of observed IPs, ASNs, and geographic distribution.
-- **Cluster Diagnostics:** Membership cluster profile, distance to centroid, and behaviorally similar peers.
-- **Path Investigation:** Deterministic shortest-path routing between two arbitrary wallets with intermediate transaction and network node breakdown.
-
-### Interactive Dashboard
-- **Overview:** High-level platform telemetry, active dataset status, anomaly counts, and risk distribution charts.
-- **Network Visualizer:** Interactive 3D force-directed graph powered by WebGL/Three.js with camera positioning, node search, and neighborhood filtering.
-- **Alerts Queue:** Filterable, sortable queue of ranked investigative leads with risk levels and primary signals.
-- **Entities Table:** Searchable registry of all 4,900+ wallets with multi-column sorting.
-- **Transactions & Model Analytics:** Model metrics, feature importance breakdowns, and raw transaction logs.
-
----
-
-## System Architecture
-
-```text
-                     ┌───────────────────────────────────────────────┐
-                     │          Analyst Web Browser (Client)         │
-                     │  React 18 + Vite + Tailwind CSS + Three.js   │
-                     └───────────────────────┬───────────────────────┘
-                                             │ HTTP / JSON (Port 5173 / 80)
-                                             ▼
-                     ┌───────────────────────────────────────────────┐
-                     │        Nginx Reverse Proxy Container          │
-                     └───────────────────────┬───────────────────────┘
-                                             │ Proxy /api/* (Port 8000)
-                                             ▼
-                     ┌───────────────────────────────────────────────┐
-                     │          FastAPI Backend Application          │
-                     │                 (Python 3.11)                 │
-                     └───────┬───────────────────────────────┬───────┘
-                             │                               │
-              ┌──────────────┴──────────────┐ ┌──────────────┴──────────────┐
-              ▼                             ▼ ▼                             ▼
-   ┌────────────────────┐         ┌────────────────────┐         ┌────────────────────┐
-   │ Ingestion Pipeline │         │  ML & Risk Engine  │         │ Graph Architecture │
-   │ (CSV/JSON Loaders, │         │ (Isolation Forest, │         │ (NetworkX Engine,  │
-   │ Normalization)     │         │  K-Means, Evidence)│         │  Subgraphs, Paths) │
-   └──────────┬─────────┘         └──────────┬─────────┘         └──────────┬─────────┘
-              │                              │                              │
-              └──────────────────────────────┼──────────────────────────────┘
-                                             ▼
-                     ┌───────────────────────────────────────────────┐
-                     │           Local Analytical Storage            │
-                     │    • Apache Parquet (wallets, txs, features)  │
-                     │    • DuckDB Embedded SQL Analytics            │
-                     │    • Pickled NetworkX Graph Artifacts         │
-                     │    • Joblib Serialized Models (IF, K-Means)   │
-                     └───────────────────────────────────────────────┘
-```
-
----
-
-## End-to-End Data Pipeline
-
-1. **Import:** Analyst uploads a CSV or JSON dataset via the Web UI or API.
-2. **Validation:** Ingestion loader verifies schema integrity, timestamps, and address formats.
-3. **Normalization:** Loader extracts individual transactions, inputs, outputs, and network links into relational tables.
-4. **Columnar Storage:** Normalized data is persisted into local Apache Parquet tables and indexed in DuckDB.
-5. **Feature Extraction:** 24 behavioral and network entropy features are calculated per wallet.
-6. **AI Anomaly Detection:** Isolation Forest computes unsupervised outlier scores.
-7. **Risk Scoring:** Multi-component risk model calculates composite 0–100 scores and assigns risk tiers.
-8. **Behavioral Clustering:** K-Means segments wallets into $K=6$ profiles and calculates PCA coordinates.
-9. **Graph Compilation:** NetworkX synthesizes wallet, transaction, IP, ASN, and country nodes and links.
-10. **Lead Ranking:** Alerts engine indexes flagged entities and formats natural-language "Why Flagged" explanations.
-11. **Dossier Exploration:** Analyst inspects specific wallets, evaluates cluster similarities, and reviews transaction histories.
-12. **Graph Navigation:** Analyst traces multi-hop transactional and network paths in the 3D link-analysis canvas.
-
----
-
-## Docker & Offline Deployment
-
-NIRIKSHAK is engineered for reliable, offline operation on Linux workstations.
-
-### Container Architecture
-- **`nirikshak_backend`:** Python 3.11 container running FastAPI, Uvicorn, DuckDB, scikit-learn, and NetworkX.
-- **`nirikshak_frontend`:** Lightweight Alpine Linux container with Nginx serving the compiled React single-page application and proxying `/api/*` requests to the backend.
-- **Data Volume Persistence:** Local directory `./backend/data` is mounted into the backend container, ensuring datasets, analytical Parquet tables, and model artifacts persist across restarts.
-
-### Offline Guarantee
-- **Zero Cloud Dependence:** No OpenAI, no external LLM APIs, no public blockchain RPC endpoints.
-- **Build vs. Runtime Separation:** Docker images are built when base images/packages are accessible. Once built, the platform executes **100% offline** without network connectivity.
-
----
-
-## System Requirements
-
-- **Operating System:** Linux (Ubuntu 20.04+, Debian 11+, RHEL 8+) or macOS (12+).
-- **Container Runtime:** Docker Engine 24.0+ and Docker Compose v2+.
-- **Native Python (if running without Docker):** Python 3.10, 3.11, or 3.12.
-- **Node.js (if running without Docker):** Node.js 18+ or 20+ and npm.
-- **System Memory:** 4 GB RAM minimum (8 GB recommended for large graph analysis).
-- **Disk Space:** 2 GB free disk space.
-
----
-
-## Quick Start — Native Local Environment
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/AnujMalviya20/Nirikshak-.git
-cd Nirikshak-
-```
-
-### 2. Launch Using Automated Demo Launcher (Recommended)
-```bash
-chmod +x run_demo.sh
-./run_demo.sh
-```
-*The script automatically verifies Python and Node.js environments, launches both services, and configures graceful cleanup on exit.*
-
-### 3. Manual Startup (Alternative)
+**Frontend:**
+- React
+- TypeScript
+- Cytoscape.js
 
 **Backend:**
-```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
+- FastAPI
+- Python
+- Polars
 
-**Frontend (in a separate terminal):**
-```bash
-cd frontend
-npm install
-npm run dev -- --host 0.0.0.0 --port 5173
-```
+**Data:**
+- Parquet
+- ClickHouse
 
-- **Frontend Console:** [http://localhost:5173](http://localhost:5173)
-- **Interactive Swagger Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Backend Health Check:** [http://localhost:8000/api/health](http://localhost:8000/api/health)
+**Graph:**
+- Neo4j
+- Neo4j Graph Data Science
 
----
+**ML / Explainability:**
+- XGBoost
+- SHAP
 
-## Quick Start — Docker Environment
+**Future graph learning:**
+- PyTorch
+- PyTorch Geometric
 
-### 1. Build Containers
-```bash
-docker compose build
-```
+**Infrastructure:**
+- Docker
+- Linux
 
-### 2. Start Application
-```bash
-docker compose up -d
-```
+## 7. Investigation Workflow
 
-### 3. Verify Container Status
-```bash
-docker compose ps
-```
+1. **Import dataset:** Load transaction and network data into the system.
+2. **Validate and normalize records:** Clean and structure the raw intelligence.
+3. **Generate/query transaction intelligence:** Extract features and metrics from the data.
+4. **Build entity relationships:** Map connections between wallets, IPs, and ASNs.
+5. **Identify suspicious patterns:** Highlight anomalies based on activity and velocity.
+6. **Investigate wallets / transactions:** Deep-dive into specific entities using the analyst interface.
+7. **Explore relationship paths:** Trace funds and network metadata across multiple hops.
+8. **Inspect supporting evidence:** Review the specific indicators that flagged an entity.
+9. **Generate ranked investigative leads:** Produce actionable intelligence reports.
 
-### 4. Access Platform
-Open your browser and navigate to:
-```text
-http://localhost:5173
-```
+## 8. Data Model
 
-To view live container logs:
-```bash
-docker compose logs -f
-```
+- **Transaction:** A record of value transfer between addresses.
+- **Wallet / Address:** An entity identifier on the blockchain.
+- **Network observation:** Metadata such as broadcasting IPs and ASNs.
+- **IP / Port metadata:** Network-layer details associated with transaction broadcasts.
+- **Entity:** A clustered or individual actor in the network.
+- **Relationship:** Edges connecting wallets (transactions) or wallets to network artifacts.
+- **Investigation:** A tracked session focused on a target entity.
+- **Risk signal:** A specific indicator of suspicious behavior.
+- **Evidence:** Data points supporting a risk signal.
+- **Investigative lead:** A high-priority entity flagged for further review.
 
-To stop containers:
-```bash
-docker compose down
-```
+## 9. Frontend Intelligence Interface
 
----
+The React + TypeScript frontend is designed exclusively for analytical workflows, providing dense information displays, 3D graph visualizations, and intuitive navigation across entities and transactions.
 
-## Demonstration Workflow & Dataset Ingestion
+## 10. Current Prototype Status
 
-When a transaction batch (CSV/JSON conforming to `schema_v1`) is loaded into NIRIKSHAK, the analytical pipeline executes:
+| Layer | Current State |
+|------|---------------|
+| Frontend | Working |
+| Backend API | Working |
+| Dataset workflow | Working |
+| Dashboard | Working |
+| Wallet investigation | Working |
+| Graph investigation UI | Working |
+| Neo4j | Planned final architecture |
+| ClickHouse | Planned final architecture |
+| XGBoost + SHAP | Planned final architecture |
+| PyTorch / PyG | Future extension |
 
-1. **Open NIRIKSHAK:** Navigate to `http://localhost:5173` and click **Launch Console**.
-2. **Import Dataset:** In the Overview dashboard, click **Import Dataset** to upload an evaluation transaction batch.
-3. **Inspect Ingestion Telemetry:** Real-time processing telemetry confirms schema validation, Parquet normalization, Isolation Forest anomaly scoring, and investigation graph compilation.
-4. **Review Dashboard Metrics:** Truthful summary counters display loaded transactions, unique wallets, and graph nodes.
-5. **Open Ranked Investigative Leads:** Navigate to the **Alerts** tab to review prioritized leads.
-6. **Examine "Why Flagged" Evidence:** Inspect the explainable breakdown detailing transaction velocity, burst rate, and counterparty dispersion.
-7. **Explore 3D Network Graph:** Switch to the **Network** tab to search and inspect connected counterparties, transaction nodes, and associated broadcast IP addresses.
-8. **Execute Path Analysis:** Trace fund flows between counterparties using the bounded path query engine.
-9. **Review Entities Registry:** Access the **Entities** tab to evaluate multi-column sorting across risk levels and anomaly scores.
+## 11. Final Architecture Roadmap
 
----
+**PHASE 1 — Clean prototype baseline**
+- Current repository baseline
+- Stable frontend/backend
+- Dataset workflow
+- Investigation interface
 
-## Prototype Architecture & Transition Baseline
+**PHASE 2 — Graph intelligence**
+- Neo4j
+- Neo4j GDS
+- Cytoscape.js
+- Relationship-centric investigation
 
-> [!NOTE]
-> In Phase 0, synthetic internal demo data and prototype models have been reset. The application operates in a clean standby state until an active evaluation dataset is ingested. The table below outlines the transitional baseline architecture:
+**PHASE 3 — Analytical scale**
+- ClickHouse
+- larger analytical workloads
+- optimized transaction/network querying
 
-| Subsystem | Baseline Implementation | Evolution Roadmap |
-| :--- | :--- | :--- |
-| **Ingestion Engine** | Chunked Stream Validator | Scalable batch & stream ingestion |
-| **Local Storage** | Columnar Parquet + DuckDB | Transitional embedded analytical storage |
-| **Anomaly Scoring** | Multi-layer Isolation Forest | Graph-augmented anomaly prioritization |
-| **Clustering** | Unsupervised Behavioral Baseline | Transitioning to graph-native community detection |
-| **Forensic Graph** | Bounded NetworkX In-Memory | Scaling to large-scale graph analytics |
+**PHASE 4 — Explainable intelligence**
+- XGBoost
+- SHAP
+- richer risk/anomaly modeling
 
-> *Clarification:* Flagged entities represent statistically anomalous behaviors prioritized for human investigation, not confirmed criminal users.
+**PHASE 5 — Advanced graph learning**
+- PyTorch
+- PyTorch Geometric
+- graph representation learning / advanced entity intelligence
 
----
-
-## Technical Stack
-
-### Frontend
-- **Framework:** React 18
-- **Language:** TypeScript
-- **Bundler:** Vite 5
-- **Styling:** Tailwind CSS + Custom Dark Theme Glassmorphism
-- **Motion & Interactions:** Framer Motion
-- **Data Visualization:** Three.js, React Force Graph 3D
-- **Icons:** Lucide React
-- **Production Server:** Nginx (Alpine Linux)
-
-### Backend
-- **Framework:** FastAPI
-- **Server:** Uvicorn (ASGI)
-- **Data Modeling:** Pydantic v2
-- **Data Processing:** Polars, DuckDB, Apache Parquet
-- **Machine Learning:** scikit-learn (Isolation Forest, K-Means, PCA)
-- **Graph Engine:** NetworkX
-- **Serialization:** Joblib
-
-### Deployment & Infrastructure
-- **Containerization:** Docker Engine, Docker Compose
-- **Target Environment:** Linux (x86_64 / ARM64), macOS
-- **Network Mode:** Standalone, air-gapped offline operation
-
----
-
-## Repository Structure
+## 12. Repository Structure
 
 ```text
-NIRIKSHAK/
-├── docker-compose.yml              # Multi-container Docker deployment configuration
-├── run_demo.sh                     # Native Linux/macOS launcher script
-├── README.md                       # Primary repository documentation
-├── implementation_plan.md          # SIH26146 architectural specification
+Nirikshak-/
+├── README.md
+├── .gitignore
+├── .dockerignore
+├── docker-compose.yml
+├── run_demo.sh
+├── docs/
 ├── backend/
-│   ├── Dockerfile                  # Python 3.11 slim production container definition
-│   ├── requirements.txt            # Python dependencies
-│   ├── README.md                   # Backend-specific architecture guide
+│   ├── Dockerfile
+│   ├── requirements.txt
 │   ├── app/
-│   │   ├── main.py                 # FastAPI application entrypoint & routing
-│   │   ├── graph/
-│   │   │   └── builder.py          # NetworkX multi-layer investigation graph compiler
-│   │   ├── ml/
-│   │   │   ├── anomaly.py          # Isolation Forest anomaly detection engine
-│   │   │   ├── clustering.py       # K-Means behavioral clustering (K=6)
-│   │   │   ├── evidence.py         # Natural-language "Why Flagged" explainability
-│   │   │   ├── features.py         # 24-dimensional behavioral feature extraction
-│   │   │   └── risk.py             # Multi-component risk scoring (0-100)
-│   │   ├── pipeline/
-│   │   │   ├── loader.py           # CSV/JSON validation and dataset ingestion
-│   │   │   └── storage.py          # Parquet normalization and DuckDB engine
-│   │   ├── routers/
-│   │   │   ├── alerts.py           # Ranked investigative leads API
-│   │   │   ├── analysis.py         # AI analysis orchestration API
-│   │   │   ├── clusters.py         # Behavioral clustering API
-│   │   │   ├── datasets.py         # Real dataset upload and lifecycle API
-│   │   │   ├── graph.py            # Graph subgraphs, search, and pathfinding API
-│   │   │   └── investigations.py   # Entity dossiers and detailed investigation API
-│   │   └── schemas/
-│   │       ├── clustering.py       # Pydantic schemas for clustering responses
-│   │       └── transaction.py      # Pydantic schemas for transactions and datasets
-│   ├── data/                       # Analytical data and dataset storage (.gitkeep)
-│   ├── models/                     # Serialized ML model artifacts directory (.gitkeep)
-│   ├── scripts/                    # Phase verification and benchmark generation scripts
-│   └── tests/                      # Automated test suite (44 unit and integration tests)
+│   ├── scripts/
+│   │   ├── datasets/
+│   │   └── verification/
+│   ├── tests/
+│   ├── data/
+│   └── models/
 └── frontend/
-    ├── Dockerfile                  # Multi-stage Node build & Nginx production container
-    ├── nginx.conf                  # Nginx reverse proxy configuration
-    ├── package.json                # Frontend dependencies and build scripts
-    ├── README.md                   # Frontend portal documentation
-    ├── public/                     # Static assets and team member portraits
-    │   ├── logo.png                # NIRIKSHAK platform brand logo
-    │   └── ...                     # Offline team portraits
+    ├── Dockerfile
+    ├── nginx.conf
+    ├── package.json
+    ├── package-lock.json
+    ├── public/
+    │   ├── branding/
+    │   └── team/
     └── src/
-        ├── App.tsx                 # Client routing and shell layout
         ├── components/
-        │   ├── AlertsPage.tsx      # Ranked alerts management component
-        │   ├── DatasetImportModal.tsx # Real-time CSV/JSON dataset upload dialog
-        │   ├── Footer.tsx          # Platform footer and attribution
-        │   ├── NavigationBar.tsx   # Top navigation bar
-        │   ├── WalletInvestigation.tsx # In-depth wallet dossier viewer
-        │   └── clustering/         # Behavioral cluster visualizers
+        │   ├── dashboard/
+        │   ├── graph/
+        │   ├── investigation/
+        │   └── ui/
+        ├── demo/
+        ├── hooks/
         ├── lib/
-        │   └── api.ts              # Typed API client for FastAPI backend
         └── pages/
-            ├── AboutUs.tsx         # "The Architects" team presentation
-            ├── Dashboard.tsx       # Core investigation console
-            └── Home.tsx            # Platform introduction page
+```
+*(Note: Licensing is currently pending).*
+
+## 13. Running Locally
+
+**Local development:**
+Start the backend API and frontend dev server:
+```bash
+./run_demo.sh
+```
+Or run them individually via `npm run dev` in `frontend` and standard Uvicorn in `backend`.
+
+**Docker:**
+Build and run the full stack:
+```bash
+docker-compose up --build
 ```
 
----
+## 14. Docker Setup
 
-## Responsible Interpretation & Ethics
+The repository includes `Dockerfile`s for both frontend and backend, orchestrated via `docker-compose.yml`.
 
-NIRIKSHAK is engineered as an investigative decision-support system:
+## 15. Development
 
-1. **Statistical Anomaly vs. Guilt:** Isolation Forest identifies statistical outliers based on distribution patterns. An unusual pattern does not constitute illegal conduct.
-2. **Correlation vs. Ownership:** Association between a transaction ID and a broadcast IP indicates network relay observation, not legal or physical control of private keys.
-3. **Human-in-the-Loop:** All flagged leads, risk scores, and cluster profiles are designed to assist qualified forensic analysts, who must verify findings against independent corroborating evidence.
+Ensure Node.js and Python are installed. Refer to `docs/DEVELOPMENT.md` for extended guidelines.
 
----
+## 16. Team
 
-## Current Limitations & Roadmap
+Developed by **Team Tarang** for SIH26146.
 
-### Current Prototype Limitations
-- **XML Ingestion:** XML input parsing is currently in progress; only CSV and JSON datasets conforming to `schema_v1` are supported.
-- **Graph Scale:** The current NetworkX graph engine is in-memory and optimized for prototype datasets (tens of thousands of nodes). Subgraphs are capped to ensure smooth rendering.
-- **Enrichment Telemetry:** Geolocation and ASN attributes currently depend on telemetry present in the ingested dataset rather than an integrated offline MaxMind GeoIP2 database.
+## 17. SIH Context
 
-### Next Development Directions
-- Support for streaming real-time mempool telemetry via local Bitcoin Core P2P socket ingestion.
-- Integration of an embedded offline GeoLite2 City/ASN database for raw IP enrichment.
-- Distributed graph query support using Memgraph or Neo4j for multi-million node transaction graphs.
-- Automated generation of cryptographically signed PDF forensic audit reports.
+This project is developed for the Smart India Hackathon 2026, addressing the challenge of cryptocurrency transaction tracking and investigative intelligence.
 
----
+## 18. License
 
-## The Architects — Team Tarang (Core Team)
-
-NIRIKSHAK was designed and engineered by **Team Tarang** (**The Architects**):
-
-- **Anuj Malviya** — Data / Backend Engineer
-- **Ishan Singh Tomar** — AI / ML Engineer
-- **Amay Mishra** — Core Architect
-- **Abhishek Verma** — Platform Engineer
-- **Aditi Jain** — Research & Development
-- **Lakshya Malviya** — Systems Architect
-
----
-
-## License
-
-All rights reserved. Licensing terms and distribution policies should be established separately by the project maintainers prior to public distribution.
+Licensing details are pending.

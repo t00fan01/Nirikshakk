@@ -22,13 +22,8 @@ import {
     BitcoinInvestigationTransaction,
     EvidenceItem,
     WalletInvestigationResponse,
-    WalletClusterDetailResponse,
 } from '../lib/api';
-import { WalletClusterBadge } from './clustering/WalletClusterBadge';
-import { WalletClusterProfileSection } from './clustering/WalletClusterProfileSection';
-import { SimilarWalletsModal } from './clustering/SimilarWalletsModal';
-import { ClusterDetailModal } from './clustering/ClusterDetailModal';
-import { getDemoWalletDossier, getDemoWalletCluster } from '../demo/demoDashboardData';
+import { getDemoWalletDossier } from '../demo/demoDashboardData';
 
 interface WalletInvestigationProps {
     walletId: string;
@@ -123,15 +118,7 @@ export default function WalletInvestigation({ walletId, onBack, onExploreInGraph
     const [copiedWallet, setCopiedWallet] = useState<boolean>(false);
     const [copiedTxId, setCopiedTxId] = useState<string | null>(null);
     const [txFilter, setTxFilter] = useState<string>('');
-    const [activeTabSection, setActiveTabSection] = useState<'evidence' | 'path' | 'transactions' | 'network' | 'timeline' | 'graph' | 'clustering'>('evidence');
-
-    // Phase 9 Behavioral Clustering States (Non-blocking)
-    const [clusterData, setClusterData] = useState<WalletClusterDetailResponse | null>(null);
-    const [clusterLoading, setClusterLoading] = useState<boolean>(false);
-    const [clusterError, setClusterError] = useState<string | null>(null);
-    const [isSimilarModalOpen, setIsSimilarModalOpen] = useState<boolean>(false);
-    const [isClusterDetailModalOpen, setIsClusterDetailModalOpen] = useState<boolean>(false);
-
+    const [activeTabSection, setActiveTabSection] = useState<'evidence' | 'path' | 'transactions' | 'network' | 'timeline' | 'graph'>('evidence');
     const fetchDossier = async () => {
         if (!cleanWallet) {
             setError('No wallet identifier provided for investigation.');
@@ -157,34 +144,8 @@ export default function WalletInvestigation({ walletId, onBack, onExploreInGraph
         }
     };
 
-    const fetchCluster = async () => {
-        if (!cleanWallet) {
-            setClusterData(null);
-            setClusterLoading(false);
-            return;
-        }
-
-        setClusterLoading(true);
-        setClusterError(null);
-        try {
-            const data = await api.getWalletCluster(cleanWallet);
-            if (data && data.cluster_label) {
-                setClusterData(data);
-            } else {
-                setClusterData(getDemoWalletCluster(cleanWallet));
-            }
-        } catch {
-            // Standalone Demo Mode: Load rich deterministic cluster
-            setClusterData(getDemoWalletCluster(cleanWallet));
-            setClusterError(null);
-        } finally {
-            setClusterLoading(false);
-        }
-    };
-
     useEffect(() => {
         fetchDossier();
-        fetchCluster();
     }, [cleanWallet]);
 
     const handleCopy = (text: string, isWallet = false) => {
@@ -375,16 +336,6 @@ export default function WalletInvestigation({ walletId, onBack, onExploreInGraph
                         </div>
                     </div>
 
-                    {/* Behavioral Cluster Archetype Badge */}
-                    <div className="mt-6 pt-5 border-t border-slate-100">
-                        <WalletClusterBadge
-                            clusterData={clusterData}
-                            loading={clusterLoading}
-                            error={clusterError}
-                            onOpenSimilar={() => setIsSimilarModalOpen(true)}
-                            onOpenClusterDetail={() => setIsClusterDetailModalOpen(true)}
-                        />
-                    </div>
                 </div>
 
                 {/* Subcomponent Score Pills */}
@@ -482,7 +433,6 @@ export default function WalletInvestigation({ walletId, onBack, onExploreInGraph
                     { id: 'network', label: 'Network Observations', count: dossier.total_network_observations },
                     { id: 'timeline', label: 'Investigation Timeline', count: '4 Events' },
                     { id: 'graph', label: 'Graph Neighborhood', count: dossier.graph_summary.direct_neighbor_count },
-                    { id: 'clustering', label: 'Behavioral Cluster', count: clusterData ? `C${clusterData.cluster_id}` : '—' },
                 ].map((t) => (
                     <button
                         key={t.id}
@@ -1110,36 +1060,6 @@ export default function WalletInvestigation({ walletId, onBack, onExploreInGraph
                 </section>
             )}
 
-            {/* SECTION 5: BEHAVIORAL CLUSTER */}
-            {activeTabSection === 'clustering' && (
-                <WalletClusterProfileSection
-                    clusterData={clusterData}
-                    loading={clusterLoading}
-                    error={clusterError}
-                    onOpenSimilar={() => setIsSimilarModalOpen(true)}
-                    onOpenClusterDetail={() => setIsClusterDetailModalOpen(true)}
-                />
-            )}
-
-            {/* Similar Wallets Modal */}
-            <SimilarWalletsModal
-                isOpen={isSimilarModalOpen}
-                onClose={() => setIsSimilarModalOpen(false)}
-                walletId={cleanWallet}
-                onInvestigateWallet={onSelectWallet}
-                onExploreInGraph={onExploreInGraph}
-            />
-
-            {/* Cluster Detail Modal */}
-            {clusterData && (
-                <ClusterDetailModal
-                    isOpen={isClusterDetailModalOpen}
-                    onClose={() => setIsClusterDetailModalOpen(false)}
-                    clusterId={clusterData.cluster_id}
-                    onInvestigateWallet={onSelectWallet}
-                    onExploreInGraph={onExploreInGraph}
-                />
-            )}
         </div>
     );
 }

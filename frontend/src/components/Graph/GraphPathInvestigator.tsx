@@ -4,7 +4,7 @@ import {
     X, AlertTriangle, CheckCircle2, ChevronRight,
     ArrowRight, CornerDownRight
 } from 'lucide-react';
-import { api, GraphPathResponse, SearchResultItem } from '../lib/api';
+import { api, GraphPathResponse, SearchResultItem } from '../../lib/api';
 
 interface GraphPathInvestigatorProps {
     isOpen: boolean;
@@ -508,7 +508,7 @@ export const GraphPathInvestigator: React.FC<GraphPathInvestigatorProps> = ({
                             </div>
 
                             <div className="flex flex-wrap items-center gap-1.5 p-3 bg-black/40 border border-white/5 rounded-2xl">
-                                {activePathResult.path_sequence.map((nodeId, idx) => {
+                                {activePathResult.path_sequence.map((nodeId: any, idx: any) => {
                                     const isSource = idx === 0;
                                     const isTarget = idx === activePathResult.path_sequence.length - 1;
                                     const matchedNode = activePathResult.nodes.find(n => n.id === nodeId);
@@ -566,7 +566,7 @@ export const GraphPathInvestigator: React.FC<GraphPathInvestigatorProps> = ({
                             </div>
 
                             <div className="space-y-2.5">
-                                {activePathResult.steps.map((step, idx) => {
+                                {activePathResult.steps.map((step: any, idx: any) => {
                                     const isExpanded = expandedStepIndex === idx;
                                     const fromNode = activePathResult.nodes.find(n => n.id === step.from_node);
                                     const toNode = activePathResult.nodes.find(n => n.id === step.to_node);
@@ -669,7 +669,7 @@ export const GraphPathInvestigator: React.FC<GraphPathInvestigatorProps> = ({
                             <div className="flex flex-wrap gap-2">
                                 {activePathResult.nodes
                                     .filter(n => n.type === 'wallet')
-                                    .map((wNode) => {
+                                    .map((wNode: any) => {
                                         const cleanAddr = (wNode.label || wNode.id).replace(/^wallet:/, '');
                                         return (
                                             <button

@@ -116,15 +116,7 @@ export const api = {
   getWalletInvestigation: (walletId: string, txLimit: number = 50, netLimit: number = 50) =>
     apiGet<WalletInvestigationResponse>(`/api/investigations/${encodeURIComponent(walletId)}?tx_limit=${txLimit}&net_limit=${netLimit}`),
 
-  // Phase 9 Behavioral Clustering API
-  getClusters: () =>
-    apiGet<ClusterProfilesResponse>('/api/clusters'),
-  getClusterDetail: (clusterId: number, limit: number = 50, offset: number = 0, sortBy: string = 'distance') =>
-    apiGet<ClusterDetailResponse>(`/api/clusters/${clusterId}?limit=${limit}&offset=${offset}&sort_by=${encodeURIComponent(sortBy)}`),
-  getWalletCluster: (walletId: string) =>
-    apiGet<WalletClusterDetailResponse>(`/api/clusters/wallet/${encodeURIComponent(walletId)}`),
-  getSimilarWallets: (walletId: string, topN: number = 5) =>
-    apiGet<SimilarWalletsResponse>(`/api/clusters/similar/${encodeURIComponent(walletId)}?top_n=${topN}`),
+
 
   // Dataset Lifecycle & Pipeline API (Hackathon Demo Mode)
   uploadDataset: (file: File) =>

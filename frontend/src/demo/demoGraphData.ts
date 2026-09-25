@@ -18,7 +18,7 @@
  * ------------------------------------------------------------------
  */
 
-import { GraphData, GraphNode, GraphLink, EntityType } from '../components/Graph/NetworkGraph3D';
+import { GraphData, GraphNode, GraphLink, EntityType } from '../components/graph/NetworkGraph3D';
 
 export interface DemoGraphStats {
   status?: string;

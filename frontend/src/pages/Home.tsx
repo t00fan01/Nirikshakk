@@ -2,7 +2,7 @@ import { motion, useScroll, useTransform } from 'framer-motion';
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Search } from 'lucide-react';
-import ImpactDashboard from '../components/ImpactDashboard';
+import PlatformMetrics from '../components/dashboard/PlatformMetrics';
 import { Marquee } from '../components/ui/marquee';
 import { FlickeringGrid } from '../components/ui/flickering-grid';
 
@@ -138,7 +138,7 @@ const Home = () => {
 
             {/* IMPACT TELEMETRY SUITE */}
             <section className="bg-white pt-12 border-t border-slate-100">
-                <ImpactDashboard />
+                <PlatformMetrics />
             </section>
 
             {/* BITCOIN INVESTIGATION PLACEHOLDER */}

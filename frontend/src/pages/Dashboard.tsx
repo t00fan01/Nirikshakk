@@ -9,14 +9,14 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import LiveThreatFeed from '../components/LiveThreatFeed';
+import InvestigationActivity from '../components/investigation/InvestigationActivity';
 import WalletInvestigation from '../components/WalletInvestigation';
-import GraphPathInvestigator from '../components/GraphPathInvestigator';
+import GraphPathInvestigator from '../components/graph/GraphPathInvestigator';
 import AlertsPage from '../components/AlertsPage';
 import { TransactionsPage } from '../components/TransactionsPage';
 import { ReportsPage } from '../components/ReportsPage';
 import { DatasetImportModal } from '../components/DatasetImportModal';
-import NetworkGraph3D from '../components/Graph/NetworkGraph3D';
+import NetworkGraph3D from '../components/graph/NetworkGraph3D';
 import {
     getDemoSubgraph,
     DEMO_ROOT_WALLET_ID,
@@ -1085,7 +1085,7 @@ const Dashboard = () => {
                             </div>
 
                             <div className="mt-8">
-                                <LiveThreatFeed
+                                <InvestigationActivity
                                     onSelectWallet={(walletAddr) => {
                                         const cleanAddr = walletAddr.replace(/^wallet:/, '');
                                         setSelectedAccountForInvestigation(cleanAddr);

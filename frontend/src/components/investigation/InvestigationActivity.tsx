@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { Terminal, ShieldAlert, Activity, ChevronRight, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { DEMO_INVESTIGATION_ACTIVITIES, InvestigationActivityEvent } from '../demo/demoInvestigationActivity';
+import { DEMO_INVESTIGATION_ACTIVITIES, InvestigationActivityEvent } from '../../demo/demoInvestigationActivity';
 
 interface LiveThreatFeedProps {
   onSelectWallet?: (wallet: string) => void;
