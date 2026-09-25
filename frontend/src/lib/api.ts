@@ -68,9 +68,6 @@ async function apiUpload<T>(path: string, file: File): Promise<T> {
 }
 
 export const api = {
-  getMuleStats: () => apiGet<{ total_accounts?: number; labels?: Record<string, number> }>('/api/mule/stats'),
-  getWebSocketTicket: () => apiPost<{ ticket: string }>('/api/auth/ws-ticket', {}),
-  getTopMuleAccounts: () => apiGet<Array<{ account_id?: string; label?: string }>>('/api/mule/top'),
   getTransactions: () => apiGet<Array<{ account_id?: string; timestamp?: string; transaction_id?: string }>>('/api/transactions'),
   getModelMetrics: () => apiGet<ModelMetricsResponse>('/api/model/metrics'),
   getModelFeatures: () => apiGet<{ features?: ModelFeatureImportance[] }>('/api/model/features'),
@@ -327,7 +324,6 @@ export interface AlertRecord {
   risk_level?: string;
   classification?: string;
   risk_score?: number;
-  mule_probability?: number;
   alert_type?: string;
   reason?: string;
   primary_reason?: string;

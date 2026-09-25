@@ -6,6 +6,10 @@
 
 ---
 
+> [!IMPORTANT]
+> **Project Transition Notice:**  
+> NIRIKSHAK is currently being transitioned from the internal hackathon demonstration build into a production-oriented prototype. Final architecture components will be introduced phase by phase.
+
 NIRIKSHAK is an offline-capable, AI-driven Bitcoin transaction intelligence and investigative analysis platform. It correlates blockchain-layer transaction metadata (inputs, outputs, amounts, script types, fees) with network-layer observations (IP addresses, ports, Autonomous System Numbers [ASNs], geolocation) to surface prioritized, explainable investigative leads through multi-layer link analysis, unsupervised anomaly detection, and behavioral clustering.
 
 Designed specifically for local and air-gapped investigative workstations, NIRIKSHAK runs completely offline without external blockchain RPC nodes, cloud AI services, or third-party tracking APIs.
@@ -328,42 +332,36 @@ docker compose down
 
 ---
 
-## Live Demo Walkthrough
+## Demonstration Workflow & Dataset Ingestion
 
-Follow this step-by-step sequence during evaluations or presentations:
+When a transaction batch (CSV/JSON conforming to `schema_v1`) is loaded into NIRIKSHAK, the analytical pipeline executes:
 
 1. **Open NIRIKSHAK:** Navigate to `http://localhost:5173` and click **Launch Console**.
-2. **Import Dataset:** In the Overview dashboard, click **Import Dataset**. Select either:
-   - Your custom CSV/JSON transaction file, or
-   - The pre-loaded verified benchmark dataset (`backend/data/demo_transactions.csv`).
-3. **Inspect Ingestion Telemetry:** Watch the real-time processing telemetry confirm validation, Parquet normalization, Isolation Forest execution, K-Means clustering, and graph compilation.
-4. **Review Dashboard Metrics:** Verify updated dataset summary counters (5,000 transactions, 4,915 wallets, 10,650 graph nodes).
-5. **Open Ranked Investigative Lead:** Navigate to the **Alerts** tab. Click the top-ranked lead (`bc1qa0fa87eac1de3da717bcfdc46ebb04276a`, Risk Score ~89.2).
-6. **Examine "Why Flagged" Evidence:** Inspect the explainable breakdown detailing high transaction velocity, burst rate, and counterparty dispersion.
-7. **Analyze Behavioral Cluster:** Review the wallet's cluster assignment and observe similar wallets flagged with equivalent behavioral profiles.
-8. **Explore 3D Network Graph:** Switch to the **Network** tab. Search for the wallet address. Inspect 1-hop and 2-hop connected counterparties, transaction nodes, and associated broadcast IP addresses.
-9. **Execute Path Analysis:** Trace fund flows between suspected counterparties using the shortest-path query engine.
-10. **Review Entities Registry:** Access the **Entities** tab to evaluate multi-column sorting across risk levels and anomaly scores.
-11. **Run Pipeline Check:** Click **Run Pipeline Check** in the header to execute an automated self-diagnostic verifying that all subsystem endpoints are healthy.
+2. **Import Dataset:** In the Overview dashboard, click **Import Dataset** to upload an evaluation transaction batch.
+3. **Inspect Ingestion Telemetry:** Real-time processing telemetry confirms schema validation, Parquet normalization, Isolation Forest anomaly scoring, and investigation graph compilation.
+4. **Review Dashboard Metrics:** Truthful summary counters display loaded transactions, unique wallets, and graph nodes.
+5. **Open Ranked Investigative Leads:** Navigate to the **Alerts** tab to review prioritized leads.
+6. **Examine "Why Flagged" Evidence:** Inspect the explainable breakdown detailing transaction velocity, burst rate, and counterparty dispersion.
+7. **Explore 3D Network Graph:** Switch to the **Network** tab to search and inspect connected counterparties, transaction nodes, and associated broadcast IP addresses.
+8. **Execute Path Analysis:** Trace fund flows between counterparties using the bounded path query engine.
+9. **Review Entities Registry:** Access the **Entities** tab to evaluate multi-column sorting across risk levels and anomaly scores.
 
 ---
 
-## Verified Prototype Metrics
+## Prototype Architecture & Transition Baseline
 
-The following metrics have been verified on the standard benchmark dataset bundled with the repository (`demo_transactions.csv`):
+> [!NOTE]
+> In Phase 0, synthetic internal demo data and prototype models have been reset. The application operates in a clean standby state until an active evaluation dataset is ingested. The table below outlines the transitional baseline architecture:
 
-| Metric | Verified Value | Description |
+| Subsystem | Baseline Implementation | Evolution Roadmap |
 | :--- | :--- | :--- |
-| **Total Transactions** | `5,000` | Normalized Bitcoin transactions |
-| **Total Unique Wallets** | `4,915` | Discovered source and destination addresses |
-| **Investigation Graph Nodes** | `10,650` | Wallets (4,915), Txs (5,000), IPs (710), ASNs (16), Countries (9) |
-| **Investigation Graph Edges** | `38,954` | Inputs, outputs, counterparty flows, and network observations |
-| **Statistically Unusual Wallets** | `246` | Flagged by Isolation Forest and prioritized using behavioral evidence |
-| **Behavioral Clusters** | `6` | Distinct behavioral profiles computed via K-Means ($K=6$) |
-| **Highest Lead Risk Score** | `89.23 / 100` | Top investigative lead (`bc1qa0fa87eac1de3da717bcfdc46ebb04276a`) |
-| **Automated Unit Tests** | `44 / 44 PASSED` | Complete backend test suite (`backend/tests/`) |
+| **Ingestion Engine** | Chunked Stream Validator | Scalable batch & stream ingestion |
+| **Local Storage** | Columnar Parquet + DuckDB | Transitional embedded analytical storage |
+| **Anomaly Scoring** | Multi-layer Isolation Forest | Graph-augmented anomaly prioritization |
+| **Clustering** | Unsupervised Behavioral Baseline | Transitioning to graph-native community detection |
+| **Forensic Graph** | Bounded NetworkX In-Memory | Scaling to large-scale graph analytics |
 
-> *Clarification:* The 246 flagged entities represent statistically anomalous behaviors prioritized for human investigation, not confirmed criminal users.
+> *Clarification:* Flagged entities represent statistically anomalous behaviors prioritized for human investigation, not confirmed criminal users.
 
 ---
 
@@ -430,11 +428,8 @@ NIRIKSHAK/
 │   │   └── schemas/
 │   │       ├── clustering.py       # Pydantic schemas for clustering responses
 │   │       └── transaction.py      # Pydantic schemas for transactions and datasets
-│   ├── data/                       # Local analytical data, Parquet tables, and graphs
-│   │   ├── demo_transactions.csv   # Standard 5,000-tx benchmark dataset
-│   │   ├── demo_transactions.json  # JSON benchmark dataset
-│   │   └── ground_truth.json       # Hidden validation labels
-│   ├── models/                     # Serialized Isolation Forest and K-Means models
+│   ├── data/                       # Analytical data and dataset storage (.gitkeep)
+│   ├── models/                     # Serialized ML model artifacts directory (.gitkeep)
 │   ├── scripts/                    # Phase verification and benchmark generation scripts
 │   └── tests/                      # Automated test suite (44 unit and integration tests)
 └── frontend/

@@ -1,0 +1,342 @@
+/* NetworkGraph3D.css
+   Scallable, professional cyber-intelligence styling for NIRIKSHAK NetworkGraph3D
+*/
+
+.niriskhak-graph-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 600px;
+  background: radial-gradient(circle at 50% 50%, #06100e 0%, #000403 100%);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 0 100px rgba(0, 42, 36, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* TOP TELEMETRY BAR */
+.niriskhak-graph-telemetry {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(4, 12, 10, 0.88);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(20, 224, 168, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 15px rgba(20, 224, 168, 0.1);
+  border-radius: 9999px;
+  padding: 8px 20px;
+  color: #edefe9;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  pointer-events: auto;
+}
+
+.niriskhak-graph-telemetry .telemetry-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #14E0A8;
+  text-transform: uppercase;
+  font-size: 10px;
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
+  padding-right: 12px;
+}
+
+.niriskhak-graph-telemetry .telemetry-items {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11px;
+}
+
+.niriskhak-graph-telemetry .telemetry-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.niriskhak-graph-telemetry .telemetry-label {
+  color: #8a968f;
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.niriskhak-graph-telemetry .telemetry-value {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.niriskhak-graph-telemetry .telemetry-value.accent {
+  color: #FF4F00;
+}
+
+.niriskhak-graph-telemetry .telemetry-value.success {
+  color: #14E0A8;
+}
+
+/* ACTIVE ANALYSIS BADGE */
+.niriskhak-active-badge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(6, 16, 13, 0.9);
+  border: 1px solid rgba(255, 79, 0, 0.4);
+  box-shadow: 0 4px 20px rgba(255, 79, 0, 0.15);
+  padding: 6px 14px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+  text-transform: uppercase;
+  font-family: inherit;
+}
+
+.niriskhak-active-badge .badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #FF4F00;
+  box-shadow: 0 0 10px #FF4F00;
+  animation: pulse 1.8s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 79, 0, 0.7); }
+  70% { transform: scale(1.15); box-shadow: 0 0 0 8px rgba(255, 79, 0, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 79, 0, 0); }
+}
+
+/* CONTROLS (HOP & FILTERS) */
+.niriskhak-graph-controls {
+  position: absolute;
+  top: 60px;
+  left: 16px;
+  z-index: 9;
+  width: 200px;
+  background: rgba(4, 12, 10, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  border-radius: 16px;
+  padding: 14px 16px 16px;
+  color: #edefe9;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.niriskhak-graph-controls .field-label {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: #7b8880;
+  margin: 12px 0 6px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.niriskhak-graph-controls .field-label:first-child {
+  margin-top: 0;
+}
+
+.niriskhak-graph-controls .filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3.5px 0;
+  color: #cfd6d1;
+  text-transform: capitalize;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.niriskhak-graph-controls .filter-row:hover {
+  color: #ffffff;
+}
+
+.niriskhak-graph-controls .filter-row input {
+  accent-color: #FF4F00;
+  cursor: pointer;
+}
+
+.hop-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.hop-buttons button {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #a0aba3;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hop-buttons button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.hop-buttons button.active {
+  background: #FF4F00;
+  color: #ffffff;
+  font-weight: 800;
+  border-color: #FF4F00;
+  box-shadow: 0 0 12px rgba(255, 79, 0, 0.5);
+}
+
+/* STATUS OVERLAY */
+.niriskhak-graph-status {
+  position: absolute;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  background: rgba(4, 12, 10, 0.94);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(20, 224, 168, 0.3);
+  border-radius: 12px;
+  padding: 8px 18px;
+  font-size: 11px;
+  color: #a2aba5;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.niriskhak-graph-status.error {
+  color: #ff8552;
+  border-color: rgba(255, 79, 0, 0.5);
+}
+
+/* NODE INSPECTOR */
+.niriskhak-graph-inspector {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  width: 260px;
+  max-height: 84%;
+  overflow-y: auto;
+  background: rgba(4, 12, 10, 0.94);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 79, 0, 0.35);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(255, 79, 0, 0.1);
+  border-radius: 18px;
+  padding: 16px 18px;
+  color: #edefe9;
+}
+
+.niriskhak-graph-inspector::-webkit-scrollbar {
+  width: 4px;
+}
+.niriskhak-graph-inspector::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.niriskhak-graph-inspector .head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 800;
+  color: #FF4F00;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.niriskhak-graph-inspector .id {
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 4px;
+  word-break: break-all;
+  font-family: ui-monospace, monospace;
+  color: #ffffff;
+}
+
+.niriskhak-graph-inspector .k {
+  font-size: 9px;
+  font-weight: 700;
+  color: #7b8880;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 10px;
+}
+
+.niriskhak-graph-inspector .v {
+  font-size: 11px;
+  color: #edefe9;
+  margin-top: 2px;
+  word-break: break-all;
+  font-family: inherit;
+}
+
+.niriskhak-graph-inspector .risk-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 10px;
+  margin-top: 4px;
+}
+
+/* LEGEND */
+.niriskhak-graph-legend {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 9;
+  width: 220px;
+  background: rgba(4, 12, 10, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 12px 16px;
+  color: #cfd6d1;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
+.niriskhak-graph-legend .legend-title {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b9990;
+  margin-bottom: 8px;
+}
+
+.niriskhak-graph-legend .legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  padding: 3px 0;
+}
+
+.niriskhak-graph-legend .lg-sub {
+  color: #637067;
+  font-size: 9px;
+}
+
+.niriskhak-graph-legend .lg-shape {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}

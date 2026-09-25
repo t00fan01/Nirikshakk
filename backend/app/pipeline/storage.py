@@ -74,9 +74,9 @@ def get_duckdb_connection(storage_dir: Optional[Union[str, Path]] = None) -> duc
 
     paths = get_parquet_paths(storage_dir)
     con = duckdb.connect(":memory:")
-    con.execute(f"CREATE VIEW transactions AS SELECT * FROM '{paths['transactions']}'")
-    con.execute(f"CREATE VIEW wallets AS SELECT * FROM '{paths['wallets']}'")
-    con.execute(f"CREATE VIEW network_observations AS SELECT * FROM '{paths['network_observations']}'")
+    con.execute(f"CREATE VIEW transactions AS SELECT * FROM '{paths['transactions'].resolve().as_posix()}'")
+    con.execute(f"CREATE VIEW wallets AS SELECT * FROM '{paths['wallets'].resolve().as_posix()}'")
+    con.execute(f"CREATE VIEW network_observations AS SELECT * FROM '{paths['network_observations'].resolve().as_posix()}'")
     return con
 
 

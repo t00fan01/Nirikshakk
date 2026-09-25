@@ -19,11 +19,9 @@ backend/
 │   └── pipeline/            # Ingestion & validation pipeline
 │       ├── __init__.py
 │       └── loader.py        # CSV/JSON loaders, validators, and summary metrics
-├── data/                    # Offline datasets & hidden ground truth (excluded from git)
+├── data/                    # Offline analytical data & datasets (excluded from git)
 │   ├── .gitignore
-│   ├── demo_transactions.csv
-│   ├── demo_transactions.json
-│   └── ground_truth.json
+│   └── .gitkeep
 ├── scripts/
 │   ├── generate_dataset.py  # Synthetic Bitcoin transaction & network traffic generator
 │   └── verify_phase1.py     # Automated Phase 1 validation test suite

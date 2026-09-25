@@ -37,11 +37,16 @@ class TestDatasetLifecycle(unittest.TestCase):
             self.assertGreater(data.get("total_wallets", 0), 0)
 
     def test_02_load_benchmark_dataset(self):
-        """POST /api/datasets/load-benchmark runs the complete end-to-end pipeline."""
+        """POST /api/datasets/load-benchmark runs the complete end-to-end pipeline if benchmark exists."""
+        canonical_demo = Path(__file__).resolve().parent.parent / "data" / "demo" / "nirikshak_demo_15k.csv"
+        fallback_demo = Path(__file__).resolve().parent.parent / "data" / "demo_transactions.csv"
+        benchmark_file = canonical_demo if canonical_demo.exists() else fallback_demo
+        if not benchmark_file.exists():
+            self.skipTest("Benchmark dataset not present in repository.")
         res = self.client.post("/api/datasets/load-benchmark")
         self.assertEqual(res.status_code, 200)
         data = res.json()
-        self.assertEqual(data["filename"], "demo_transactions.csv")
+        self.assertIn(data["filename"], ["nirikshak_demo_15k.csv", "demo_transactions.csv"])
         self.assertEqual(data["detected_format"], "csv")
         self.assertEqual(data["pipeline_status"], "SUCCESS")
         self.assertIn("stage_timings_ms", data)

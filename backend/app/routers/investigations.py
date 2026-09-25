@@ -67,9 +67,9 @@ def get_wallet_investigation(
         )
 
     paths = get_parquet_paths()
-    wallets_path = paths["wallets"]
-    tx_path = paths["transactions"]
-    net_path = paths["network_observations"]
+    wallets_path = paths["wallets"].resolve().as_posix()
+    tx_path = paths["transactions"].resolve().as_posix()
+    net_path = paths["network_observations"].resolve().as_posix()
 
     con = duckdb.connect()
 
@@ -109,7 +109,7 @@ def get_wallet_investigation(
 
     if has_analysis_data():
         try:
-            leads_path = get_analysis_paths()["leads"]
+            leads_path = get_analysis_paths()["leads"].resolve().as_posix()
             lead_df = con.execute(
                 f"SELECT * FROM '{leads_path}' WHERE wallet_address = ? LIMIT 1",
                 [clean_id]

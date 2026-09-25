@@ -29,6 +29,63 @@ from app.schemas.graph import (
 router = APIRouter()
 
 
+@router.get("/demo-root", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
+def get_demo_root():
+    """
+    Return a deterministic initial root entity from the active investigation graph
+    derived truthfully from the current dataset (prioritizing top investigative leads).
+    """
+    try:
+        graph = load_or_build_graph()
+        from app.ml.analyzer import get_analysis_paths, has_analysis_data
+        import polars as pl
+        if has_analysis_data():
+            leads_path = get_analysis_paths()["leads"]
+            if leads_path.exists():
+                df_leads = pl.read_parquet(leads_path)
+                for row in df_leads.iter_rows(named=True):
+                    addr = str(row.get("wallet_address", ""))
+                    node_id = f"wallet:{addr}"
+                    if graph.has_node(node_id):
+                        node_data = graph.nodes[node_id]
+                        return {
+                            "entity_id": node_id,
+                            "type": "wallet",
+                            "label": addr,
+                            "risk_score": node_data.get("risk_score", round(float(row.get("risk_score", 0)), 2)),
+                            "risk_level": node_data.get("risk_level", str(row.get("risk_level", "LOW"))),
+                            "confidence": 0.95,
+                            "transaction_count": node_data.get("transaction_count", int(row.get("transaction_count", 0))),
+                            "total_degree": graph.degree(node_id),
+                        }
+
+        # Fallback: find first wallet node with degree > 0
+        for n, d in graph.nodes(data=True):
+            if d.get("type") == "wallet" and graph.degree(n) > 0:
+                return {
+                    "entity_id": n,
+                    "type": "wallet",
+                    "label": d.get("label", n.replace("wallet:", "")),
+                    "risk_score": d.get("risk_score", 0.0),
+                    "risk_level": d.get("risk_level", "LOW"),
+                    "confidence": 0.9,
+                    "transaction_count": d.get("transaction_count", 0),
+                    "total_degree": graph.degree(n),
+                }
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No valid connected entity found in the active graph.",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve demo root entity: {str(e)}",
+        )
+
+
 @router.get("/stats", response_model=GraphStatsResponse, status_code=status.HTTP_200_OK)
 def graph_statistics():
     """

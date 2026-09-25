@@ -38,7 +38,8 @@ from app.schemas.transaction import (
 router = APIRouter()
 
 MANIFEST_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "active_dataset.json"
-BENCHMARK_CSV = Path(__file__).resolve().parent.parent.parent / "data" / "demo_transactions.csv"
+CANONICAL_DEMO_CSV = Path(__file__).resolve().parent.parent.parent / "data" / "demo" / "nirikshak_demo_15k.csv"
+LEGACY_BENCHMARK_CSV = Path(__file__).resolve().parent.parent.parent / "data" / "demo_transactions.csv"
 
 
 def process_dataset_end_to_end(
@@ -264,17 +265,18 @@ async def upload_dataset(
 @router.post("/load-benchmark", response_model=DatasetUploadResponse, status_code=status.HTTP_200_OK)
 def load_benchmark_dataset():
     """
-    Load the official SIH26146 benchmark dataset (5,000 transactions) directly
-    from backend/data/demo_transactions.csv and run the exact same end-to-end processing pipeline.
+    Load the official SIH26146 demonstration dataset (15,000 transactions) directly
+    from backend/data/demo/nirikshak_demo_15k.csv and run the exact same end-to-end processing pipeline.
     """
-    if not BENCHMARK_CSV.exists():
+    target_csv = CANONICAL_DEMO_CSV if CANONICAL_DEMO_CSV.exists() else LEGACY_BENCHMARK_CSV
+    if not target_csv.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Benchmark dataset demo_transactions.csv not found on disk."
+            detail=f"Demonstration dataset not found on disk at {CANONICAL_DEMO_CSV} or {LEGACY_BENCHMARK_CSV}."
         )
 
     t_val = time.perf_counter()
-    with open(BENCHMARK_CSV, "r", encoding="utf-8") as f:
+    with open(target_csv, "r", encoding="utf-8") as f:
         content = f.read()
 
     valid_records, rejected_records = parse_csv_content(content)
@@ -283,7 +285,7 @@ def load_benchmark_dataset():
 
     return process_dataset_end_to_end(
         valid_records=valid_records,
-        filename="demo_transactions.csv",
+        filename=target_csv.name,
         detected_format="csv",
         total_rows=total_rows,
         rejected_records=rejected_records,
@@ -314,9 +316,10 @@ def get_active_dataset_status():
                 analysis_summary = json.load(sf)
 
             graph_stats = get_graph_stats() if has_graph_data() else {}
+            fallback_filename = CANONICAL_DEMO_CSV.name if CANONICAL_DEMO_CSV.exists() else "nirikshak_demo_15k.csv"
             return ActiveDatasetStatus(
                 has_dataset=True,
-                filename="demo_transactions.csv",
+                filename=fallback_filename,
                 total_transactions=analytics.get("transactions", 0),
                 total_wallets=analytics.get("wallets", 0),
                 anomalies_detected=analysis_summary.get("anomalies_detected", 0),

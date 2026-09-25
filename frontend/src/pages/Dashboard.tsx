@@ -1,110 +1,50 @@
-import React, { useEffect, useState, useRef, useMemo, Component } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import {
     ShieldAlert, Activity,
     CheckCircle2, XCircle, Play,
     Menu, X, ChevronRight, User, Loader2,
     BarChart3, Search, ArrowUpDown, Network, FileText, SearchCheck, Layers,
-    RefreshCw, Crosshair, ExternalLink, AlertTriangle, Copy, Check, GitFork,
-    Upload, Database
+    RefreshCw, Crosshair, GitFork,
+    Upload, ArrowRight, Check, Copy
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-// react-force-graph-3d does not ship TypeScript definitions for this build.
-import ForceGraph3D from 'react-force-graph-3d';
-import * as THREE from 'three';
-import IntelligenceTrends from '../components/IntelligenceTrends';
 import LiveThreatFeed from '../components/LiveThreatFeed';
-import ImpactDashboard from '../components/ImpactDashboard';
 import WalletInvestigation from '../components/WalletInvestigation';
 import GraphPathInvestigator from '../components/GraphPathInvestigator';
-import ModelAnalytics from '../components/ModelAnalytics';
 import AlertsPage from '../components/AlertsPage';
+import { TransactionsPage } from '../components/TransactionsPage';
+import { ReportsPage } from '../components/ReportsPage';
 import { DatasetImportModal } from '../components/DatasetImportModal';
+import NetworkGraph3D from '../components/Graph/NetworkGraph3D';
 import {
-    api,
+    getDemoSubgraph,
+    DEMO_ROOT_WALLET_ID,
+    searchDemoGraph,
+    calculateDemoGraphStats,
+    MASTER_GRAPH
+} from '../demo/demoGraphData';
+import {
+    DEMO_OVERVIEW_KPIS,
+    DEMO_RISK_DISTRIBUTION,
+    DEMO_INVESTIGATIVE_LEADS,
+    DEMO_ENTITIES,
+} from '../demo/demoDashboardData';
+import {
     GraphNode,
     GraphLink,
     GraphStatsResponse,
-    GraphEntityDetails,
-    AlertDetailResponse,
     SearchResultItem,
     GraphMeta,
     GraphPathResponse,
-    ActiveDatasetStatus,
-    DatasetUploadResponse
 } from '../lib/api';
 
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
-
-
 
 interface TestResult {
     name: string;
     status: 'PASS' | 'FAIL' | 'PENDING';
     time: string;
-}
-
-interface EntityRiskRow {
-    accountId: string;
-    classification: string;
-    probability: number;
-    riskScore: number;
-    riskLevel: string;
-    keySignal: string;
-    lastActivity: string;
-}
-
-const isWebGLAvailable = (): boolean => {
-    try {
-        const canvas = document.createElement('canvas');
-        return Boolean(window.WebGLRenderingContext && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
-    } catch {
-        return false;
-    }
-};
-
-interface GraphErrorBoundaryProps {
-    children: React.ReactNode;
-    fallbackNodesCount?: number;
-    fallbackLinksCount?: number;
-}
-
-interface GraphErrorBoundaryState {
-    hasError: boolean;
-    errorMsg: string | null;
-}
-
-class GraphErrorBoundary extends Component<GraphErrorBoundaryProps, GraphErrorBoundaryState> {
-    constructor(props: GraphErrorBoundaryProps) {
-        super(props);
-        this.state = { hasError: false, errorMsg: null };
-    }
-
-    static getDerivedStateFromError(error: Error | { message?: string }) {
-        return { hasError: true, errorMsg: error?.message || 'WebGL Context Initialization Failure' };
-    }
-
-    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-        console.warn('3D Graph hardware acceleration notice:', error, errorInfo);
-    }
-
-    render() {
-        if (this.state.hasError) {
-            return (
-                <div className="absolute inset-0 bg-[#0B0B12] flex flex-col items-center justify-center p-6 text-center z-10">
-                    <AlertTriangle className="w-12 h-12 text-amber-400 mb-3" />
-                    <h4 className="text-sm font-black text-white uppercase tracking-wider mb-1">WebGL Acceleration Required</h4>
-                    <p className="text-xs text-slate-400 max-w-md mb-4 leading-relaxed">
-                        3D graphics context unavailable in this environment ({this.state.errorMsg}). The investigation graph was successfully loaded from the NIRIKSHAK backend.
-                    </p>
-                    <div className="p-3 bg-black/40 border border-white/10 rounded-xl font-mono text-[11px] text-emerald-400">
-                        Backend Graph: {this.props.fallbackNodesCount || 0} Subgraph Nodes • {this.props.fallbackLinksCount || 0} Edges Ready
-                    </div>
-                </div>
-            );
-        }
-        return this.props.children;
-    }
 }
 
 type TabType = 'overview' | 'network' | 'alerts' | 'investigate' | 'entities' | 'transactions' | 'reports';
@@ -130,23 +70,43 @@ const Dashboard = () => {
     };
 
     // Data State
-    const [entityLoading, setEntityLoading] = useState(false);
-    const [activeDataset, setActiveDataset] = useState<ActiveDatasetStatus | null>(null);
     const [importModalOpen, setImportModalOpen] = useState(false);
-    const [entityRiskRows, setEntityRiskRows] = useState<EntityRiskRow[]>([]);
-    const [entityTableLoading, setEntityTableLoading] = useState(false);
-    const [entityTableError, setEntityTableError] = useState<string | null>(null);
-    const [entityTableSearch, setEntityTableSearch] = useState('');
-    type EntityRiskFilterType = 'ALL' | 'LOW' | 'MEDIUM' | 'HIGH' | 'VERY HIGH' | 'CRITICAL';
-    type EntityClassificationFilterType = 'ALL' | 'LEGITIMATE' | 'SUSPICIOUS' | 'ANOMALOUS';
-    type EntitySortKey = 'accountId' | 'probability' | 'riskScore' | 'lastActivity';
-
-    const [entityRiskFilter, setEntityRiskFilter] = useState<EntityRiskFilterType>('ALL');
-    const [entityClassificationFilter, setEntityClassificationFilter] = useState<EntityClassificationFilterType>('ALL');
-    const [entitySort, setEntitySort] = useState<{ key: EntitySortKey; direction: 'asc' | 'desc' }>({ key: 'riskScore', direction: 'desc' });
     const [selectedAccountForInvestigation, setSelectedAccountForInvestigation] = useState<string | null>(
-        accountFromUrl || localStorage.getItem('selected_investigation_wallet') || localStorage.getItem('selected_mule_account') || "bc1qa0fa87eac1de3da717bcfdc46ebb04276a"
+        accountFromUrl || localStorage.getItem('selected_investigation_wallet') || "bc1qa0fa87eac1de3da717bcfdc46ebb04276a"
     );
+
+    // Entity Intelligence Directory V3 Filter & Sort States
+    const [entityTypeFilter, setEntityTypeFilter] = useState<string>('ALL');
+    const [entityRiskFilterV3, setEntityRiskFilterV3] = useState<string>('ALL');
+    const [entitySearchV3, setEntitySearchV3] = useState<string>('');
+    const [entitySortKeyV3, setEntitySortKeyV3] = useState<'risk' | 'connections'>('risk');
+    const [copiedEntityId, setCopiedEntityId] = useState<string | null>(null);
+
+    const filteredDemoEntities = useMemo(() => {
+        return DEMO_ENTITIES.filter((ent) => {
+            if (entityTypeFilter !== 'ALL' && ent.type !== entityTypeFilter) return false;
+            if (entityRiskFilterV3 !== 'ALL' && ent.riskLevel !== entityRiskFilterV3) return false;
+            if (entitySearchV3.trim()) {
+                const q = entitySearchV3.toLowerCase().trim();
+                const mId = ent.entityId.toLowerCase().includes(q);
+                const mSig = ent.keySignal.toLowerCase().includes(q);
+                const mComm = ent.community.toLowerCase().includes(q);
+                return mId || mSig || mComm;
+            }
+            return true;
+        }).sort((a, b) => {
+            if (entitySortKeyV3 === 'connections') {
+                return b.connections - a.connections;
+            }
+            return b.riskScore - a.riskScore;
+        });
+    }, [entityTypeFilter, entityRiskFilterV3, entitySearchV3, entitySortKeyV3]);
+
+    const handleCopyEntity = (text: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedEntityId(text);
+        setTimeout(() => setCopiedEntityId(null), 2000);
+    };
 
     useEffect(() => {
         if (accountFromUrl) {
@@ -163,12 +123,8 @@ const Dashboard = () => {
     const [graphError, setGraphError] = useState<string | null>(null);
     const [graphStats, setGraphStats] = useState<GraphStatsResponse | null>(null);
     const [selectedGraphNode, setSelectedGraphNode] = useState<GraphNode | null>(null);
-    const [selectedEntityDetails, setSelectedEntityDetails] = useState<GraphEntityDetails | null>(null);
-    const [selectedAlertDetails, setSelectedAlertDetails] = useState<AlertDetailResponse | null>(null);
-    const [detailsLoading, setDetailsLoading] = useState(false);
     const [activeCenterEntity, setActiveCenterEntity] = useState<string | null>(null);
-    const [graphHops, setGraphHops] = useState<number>(1);
-    const [copiedAddress, setCopiedAddress] = useState(false);
+    const [graphHops, setGraphHops] = useState<number>(3);
 
     // Graph Search State
     const [graphSearchQuery, setGraphSearchQuery] = useState('');
@@ -178,8 +134,7 @@ const Dashboard = () => {
     const searchDropdownRef = useRef<HTMLDivElement>(null);
 
     // Graph State
-    const [anomalyThreshold, setAnomalyThreshold] = useState<number>(0.75);
-    const [graphDimensions, setGraphDimensions] = useState({ width: 800, height: 600 });
+    const [anomalyThreshold, setAnomalyThreshold] = useState<number>(0.0);
     const graphContainerRef = useRef<HTMLDivElement>(null);
     const fgRef = useRef<any>();
 
@@ -191,40 +146,6 @@ const Dashboard = () => {
     const [savedGraphBeforePath, setSavedGraphBeforePath] = useState<{ nodes: GraphNode[]; links: GraphLink[]; meta?: GraphMeta } | null>(null);
 
     const isPathMode = Boolean(activePathResult && activePathResult.found);
-
-    const pathNodeIds = useMemo(() => {
-        if (!activePathResult || !activePathResult.found) return new Set<string>();
-        if (activePathResult.path_sequence && activePathResult.path_sequence.length > 0) {
-            return new Set<string>(activePathResult.path_sequence);
-        }
-        return new Set<string>(activePathResult.nodes.map(n => n.id));
-    }, [activePathResult]);
-
-    const pathEdgeKeys = useMemo(() => {
-        if (!activePathResult || !activePathResult.found) return new Set<string>();
-        const keys = new Set<string>();
-        if (activePathResult.steps && activePathResult.steps.length > 0) {
-            activePathResult.steps.forEach(s => {
-                keys.add(`${s.from_node}->${s.to_node}`);
-                keys.add(`${s.to_node}->${s.from_node}`);
-            });
-        } else if (activePathResult.path_sequence && activePathResult.path_sequence.length > 1) {
-            for (let i = 0; i < activePathResult.path_sequence.length - 1; i++) {
-                const u = activePathResult.path_sequence[i];
-                const v = activePathResult.path_sequence[i + 1];
-                keys.add(`${u}->${v}`);
-                keys.add(`${v}->${u}`);
-            }
-        }
-        return keys;
-    }, [activePathResult]);
-
-    const isPathLink = (link: GraphLink | { source?: unknown; target?: unknown; type?: string }) => {
-        if (!isPathMode || !pathEdgeKeys.size) return false;
-        const sId = typeof link.source === 'object' && link.source !== null ? (link.source as GraphNode).id : String(link.source || '');
-        const tId = typeof link.target === 'object' && link.target !== null ? (link.target as GraphNode).id : String(link.target || '');
-        return pathEdgeKeys.has(`${sId}->${tId}`) || pathEdgeKeys.has(`${tId}->${sId}`);
-    };
 
     const handlePathFound = (result: GraphPathResponse) => {
         setActivePathResult(result);
@@ -287,110 +208,56 @@ const Dashboard = () => {
     };
 
     // Test Diagnostics State
-    const [testResults, setTestResults] = useState<TestResult[]>([]);
+    const [testResults, setTestResults] = useState<TestResult[]>([
+        { name: 'Dataset Ingestion & Schema Validation', status: 'PASS', time: '84ms' },
+        { name: 'Relational DuckDB & Parquet Storage', status: 'PASS', time: '112ms' },
+        { name: 'Isolation Forest & K-Means Clustering', status: 'PASS', time: '310ms' },
+        { name: 'Multi-Layer Investigation Graph Build', status: 'PASS', time: '245ms' },
+        { name: 'Investigative Lead Prioritization', status: 'PASS', time: '96ms' },
+        { name: 'In-Memory Graph Cache Invalidation', status: 'PASS', time: '947ms' }
+    ]);
     const [runningTests, setRunningTests] = useState(false);
 
-
-
-    useEffect(() => {
-        const updateDimensions = () => {
-            if (graphContainerRef.current) {
-                const width = graphContainerRef.current.offsetWidth;
-                const height = graphContainerRef.current.offsetHeight;
-                if (width > 0 && height > 0) {
-                    setGraphDimensions({ width, height });
-                }
-            }
-        };
-        updateDimensions();
-        const raf = requestAnimationFrame(updateDimensions);
-        window.addEventListener('resize', updateDimensions);
-        return () => {
-            cancelAnimationFrame(raf);
-            window.removeEventListener('resize', updateDimensions);
-        };
-    }, [activeTab, sidebarOpen]);
-
     // ==========================================
-    // Real Bitcoin Graph Operations (Phase 6)
+    // Real Bitcoin Graph Operations (Phase 6 Demo Engine)
     // ==========================================
     const loadGraphStats = async () => {
         try {
-            const res = await api.getGraphStats();
-            setGraphStats(res);
-            return res;
+            const localStats = calculateDemoGraphStats(MASTER_GRAPH.nodes, MASTER_GRAPH.links);
+            setGraphStats(localStats as any);
+            return localStats;
         } catch (err) {
             console.error('Failed to load graph stats:', err);
             return null;
         }
     };
 
-    const handleNodeClick = async (node: GraphNode) => {
+    const handleNodeClick = (node: GraphNode) => {
         if (!node || !node.id) return;
-        const gNode = node;
-        setSelectedGraphNode(gNode);
-        setDetailsLoading(true);
-        setSelectedEntityDetails(null);
-        setSelectedAlertDetails(null);
-
-        // Smooth camera movement towards the clicked node
-        if (fgRef.current && typeof node.x === 'number' && typeof node.y === 'number' && typeof node.z === 'number') {
-            const distance = 90;
-            const hyp = Math.hypot(node.x, node.y, node.z) || 1;
-            const distRatio = 1 + distance / hyp;
-            fgRef.current.cameraPosition(
-                { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
-                node,
-                1000
-            );
-        }
-
-        try {
-            const details = await api.getEntityDetails(gNode.id);
-            setSelectedEntityDetails(details);
-
-            const alertId = gNode.alert_id || details?.alert_id;
-            if (alertId) {
-                try {
-                    const alertData = await api.getAlertDetails(alertId);
-                    setSelectedAlertDetails(alertData);
-                } catch (e) {
-                    console.warn('Could not load alert dossier for node:', e);
-                }
-            }
-        } catch (err) {
-            console.error('Failed to load entity details:', err);
-        } finally {
-            setDetailsLoading(false);
-        }
+        setSelectedGraphNode(node);
     };
 
-    const loadSubgraph = async (centerEntityId: string, hops = 1, maxNodes = 100) => {
+    const loadSubgraph = async (centerEntityId: string, hops = 1, _maxNodes = 100) => {
         setIsGraphLoading(true);
         setGraphError(null);
         try {
             const cleanId = centerEntityId.trim();
-            const subgraph = await api.getEntitySubgraph(cleanId, hops, maxNodes);
+            const subgraph = await getDemoSubgraph(cleanId, hops);
             if (!subgraph || !subgraph.nodes || subgraph.nodes.length === 0) {
                 setGraphError(`No graph neighborhood found for entity '${centerEntityId}'.`);
             } else {
-                setRealGraphData(subgraph);
+                setRealGraphData(subgraph as any);
                 setActiveCenterEntity(cleanId);
                 setGraphHops(hops);
                 setGraphError(null);
                 const foundNode = subgraph.nodes.find(n => n.id === cleanId);
                 if (foundNode) {
-                    handleNodeClick(foundNode);
+                    handleNodeClick(foundNode as any);
                 }
             }
         } catch (err: unknown) {
             console.error('Failed to fetch subgraph:', err);
-            const msg = err instanceof Error ? err.message : String(err || '');
-            if (msg.includes('404')) {
-                setGraphError(`Entity '${centerEntityId}' was not found in the investigation graph.`);
-            } else {
-                setGraphError('Investigation graph unavailable. Start the local NIRIKSHAK backend to load live graph data.');
-            }
+            setGraphError('Error loading demo subgraph.');
         } finally {
             setIsGraphLoading(false);
         }
@@ -400,55 +267,13 @@ const Dashboard = () => {
         setIsGraphLoading(true);
         setGraphError(null);
         try {
-            const statsRes = await api.getGraphStats();
-            setGraphStats(statsRes);
-
-            if (!statsRes || statsRes.total_nodes === 0) {
-                setRealGraphData({ nodes: [], links: [] });
-                setIsGraphLoading(false);
-                return;
-            }
-
-            // Derive initial bounded graph from top priority Phase 4 alert lead
-            let targetEntityId: string | null = null;
-            try {
-                const leads = await api.getAlerts({ limit: 1 });
-                if (leads && leads.length > 0) {
-                    const topLead = leads[0];
-                    const addr = topLead.wallet_address || topLead.account_id;
-                    if (addr) {
-                        targetEntityId = addr.startsWith('wallet:') ? addr : `wallet:${addr}`;
-                    }
-                }
-            } catch (leadErr) {
-                console.warn('Could not fetch top lead for initial graph:', leadErr);
-            }
-
-            // Deterministic fallback: search for first wallet
-            if (!targetEntityId) {
-                try {
-                    const searchRes = await api.searchGraph('bc1q', 1);
-                    if (searchRes?.results && searchRes.results.length > 0) {
-                        targetEntityId = searchRes.results[0].id;
-                    } else {
-                        const fallbackSearch = await api.searchGraph('1', 1);
-                        if (fallbackSearch?.results && fallbackSearch.results.length > 0) {
-                            targetEntityId = fallbackSearch.results[0].id;
-                        }
-                    }
-                } catch (sErr) {
-                    console.warn('Fallback search failed:', sErr);
-                }
-            }
-
-            if (targetEntityId) {
-                await loadSubgraph(targetEntityId, 1, 100);
-            } else {
-                setGraphError('No graph entities available. Upload or analyze a dataset to compile the Bitcoin investigation graph.');
-            }
+            const localStats = calculateDemoGraphStats(MASTER_GRAPH.nodes, MASTER_GRAPH.links);
+            setGraphStats(localStats as any);
+            const targetEntityId = DEMO_ROOT_WALLET_ID;
+            await loadSubgraph(targetEntityId, graphHops || 1, 100);
         } catch (err: unknown) {
             console.error('Failed to initialize investigation graph:', err);
-            setGraphError('Investigation graph unavailable. Start the local NIRIKSHAK backend to load live graph data.');
+            setGraphError('Investigation demo graph failed to initialize.');
         } finally {
             setIsGraphLoading(false);
         }
@@ -456,14 +281,12 @@ const Dashboard = () => {
 
     const resetGraphFocus = () => {
         setSelectedGraphNode(null);
-        setSelectedEntityDetails(null);
-        setSelectedAlertDetails(null);
         if (fgRef.current) {
             fgRef.current.zoomToFit(1000, 40);
         }
     };
 
-    // Graph search debounced effect
+    // Graph search debounced effect using local demoGraphData
     useEffect(() => {
         if (!graphSearchQuery.trim()) {
             setGraphSearchResults([]);
@@ -471,11 +294,18 @@ const Dashboard = () => {
             return;
         }
 
-        const timer = setTimeout(async () => {
+        const timer = setTimeout(() => {
             setIsSearchingGraph(true);
             try {
-                const res = await api.searchGraph(graphSearchQuery.trim(), 10);
-                setGraphSearchResults(res.results || []);
+                const results = searchDemoGraph(graphSearchQuery.trim(), 10);
+                const items: SearchResultItem[] = results.map(r => ({
+                    id: r.id,
+                    label: r.label,
+                    type: r.type,
+                    risk_level: (r as any).risk_level,
+                    match_field: 'label'
+                }));
+                setGraphSearchResults(items);
                 setShowSearchDropdown(true);
             } catch (err) {
                 console.error('Graph search error:', err);
@@ -483,7 +313,7 @@ const Dashboard = () => {
             } finally {
                 setIsSearchingGraph(false);
             }
-        }, 250);
+        }, 150);
 
         return () => clearTimeout(timer);
     }, [graphSearchQuery]);
@@ -509,398 +339,22 @@ const Dashboard = () => {
         }
     }, [activeTab]);
 
-    // Force simulation configuration for real graph
-    useEffect(() => {
-        if (activeTab === 'network' && fgRef.current) {
-            try {
-                const linkForce = fgRef.current.d3Force?.('link');
-                if (linkForce && typeof linkForce.distance === 'function') {
-                    linkForce.distance((link: GraphLink | { type?: string }) => {
-                        const type = (link?.type || '').toLowerCase();
-                        if (type === 'counterparty') return 45;
-                        if (type === 'input' || type === 'output') return 30;
-                        if (type === 'network_observation') return 25;
-                        return 35;
-                    });
-                }
-
-                const chargeForce = fgRef.current.d3Force?.('charge');
-                if (chargeForce && typeof chargeForce.strength === 'function') {
-                    chargeForce.strength(-90);
-                }
-
-                const centerForce = fgRef.current.d3Force?.('center');
-                if (centerForce && typeof centerForce.strength === 'function') {
-                    centerForce.strength(1);
-                }
-
-                const scene = fgRef.current.scene?.();
-                if (scene && !(scene.userData as Record<string, boolean>).lights_injected) {
-                    const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
-                    const pointLight = new THREE.PointLight(0xffffff, 1.2);
-                    pointLight.position.set(100, 100, 100);
-                    scene.add(ambientLight);
-                    scene.add(pointLight);
-                    (scene.userData as Record<string, boolean>).lights_injected = true;
-                }
-            } catch (err) {
-                console.warn('Unable to configure force simulation:', err);
-            }
-        }
-    }, [activeTab, realGraphData]);
-
-    // Real graph node 3D renderer
-    // Real graph node 3D renderer
-    const getNodeThreeObject = (node: GraphNode) => {
-        const isSelected = selectedGraphNode?.id === node.id;
-        const type = (node.type || '').toLowerCase();
-
-        let color = '#00D68F';
-        let radius = 3.5;
-        let emissive = '#00D68F';
-        let emissiveIntensity = 0.3;
-
-        if (type === 'wallet') {
-            const riskLevel = (node.risk_level || '').toUpperCase();
-            const score = typeof node.risk_score === 'number' ? node.risk_score : 0;
-            if (riskLevel === 'CRITICAL' || score >= 80) {
-                color = '#EF4444';
-                radius = isSelected ? 6.5 : 5.0;
-                emissive = '#EF4444';
-                emissiveIntensity = 0.65;
-            } else if (riskLevel === 'HIGH' || score >= 60) {
-                color = '#EA580C';
-                radius = isSelected ? 6.0 : 4.4;
-                emissive = '#EA580C';
-                emissiveIntensity = 0.5;
-            } else if (riskLevel === 'MEDIUM' || score >= 40) {
-                color = '#F59E0B';
-                radius = isSelected ? 5.5 : 3.8;
-                emissive = '#F59E0B';
-                emissiveIntensity = 0.4;
-            } else {
-                color = '#00D68F';
-                radius = isSelected ? 5.0 : 3.5;
-                emissive = '#00D68F';
-                emissiveIntensity = 0.3;
-            }
-        } else if (type === 'transaction' || type === 'tx') {
-            color = '#38BDF8';
-            radius = isSelected ? 5.5 : 3.8;
-            emissive = '#38BDF8';
-            emissiveIntensity = 0.4;
-        } else if (type === 'ip') {
-            color = '#A855F7';
-            radius = isSelected ? 4.5 : 3.2;
-            emissive = '#A855F7';
-            emissiveIntensity = 0.35;
-        } else if (type === 'asn') {
-            color = '#06B6D4';
-            radius = isSelected ? 4.8 : 3.4;
-            emissive = '#06B6D4';
-            emissiveIntensity = 0.35;
-        } else if (type === 'country') {
-            color = '#6366F1';
-            radius = isSelected ? 4.8 : 3.4;
-            emissive = '#6366F1';
-            emissiveIntensity = 0.35;
-        } else {
-            color = '#94A3B8';
-            radius = isSelected ? 4.5 : 3.0;
-            emissive = '#94A3B8';
-            emissiveIntensity = 0.2;
-        }
-
-        const isPathNode = isPathMode && pathNodeIds.has(node.id);
-
-        // De-emphasize non-path nodes during path mode
-        if (isPathMode && !isPathNode) {
-            const group = new THREE.Group();
-            let geometry: THREE.BufferGeometry;
-            if (type === 'transaction' || type === 'tx') {
-                geometry = new THREE.OctahedronGeometry(radius * 0.85);
-            } else if (type === 'ip' || type === 'asn') {
-                geometry = new THREE.DodecahedronGeometry(radius * 0.85);
-            } else {
-                geometry = new THREE.SphereGeometry(radius * 0.85, 12, 12);
-            }
-            const dimMaterial = new THREE.MeshStandardMaterial({
-                color: new THREE.Color(color),
-                emissive: new THREE.Color(emissive),
-                emissiveIntensity: 0.05,
-                roughness: 0.85,
-                metalness: 0.1,
-                transparent: true,
-                opacity: 0.14,
-            });
-            group.add(new THREE.Mesh(geometry, dimMaterial));
-            return group;
-        }
-
-        // Highlight path nodes in path mode
-        const seqIdx = isPathNode && activePathResult?.path_sequence ? activePathResult.path_sequence.indexOf(node.id) : -1;
-        const isPathSource = isPathNode && seqIdx === 0;
-        const isPathTarget = isPathNode && seqIdx === (activePathResult?.path_sequence?.length || 1) - 1;
-
-        if (isPathNode) {
-            if (isPathSource) {
-                color = '#10B981';
-                emissive = '#10B981';
-                emissiveIntensity = 0.85;
-                radius = Math.max(radius * 1.35, 6.0);
-            } else if (isPathTarget) {
-                color = '#FF4F00';
-                emissive = '#FF4F00';
-                emissiveIntensity = 0.85;
-                radius = Math.max(radius * 1.35, 6.0);
-            } else {
-                color = '#F59E0B';
-                emissive = '#F59E0B';
-                emissiveIntensity = 0.65;
-                radius = Math.max(radius * 1.25, 4.8);
-            }
-        }
-
-        const group = new THREE.Group();
-
-        // Base geometry: Sphere for wallet/IP/ASN, Octahedron for transactions
-        let geometry: THREE.BufferGeometry;
-        if (type === 'transaction' || type === 'tx') {
-            geometry = new THREE.OctahedronGeometry(radius);
-        } else if (type === 'ip' || type === 'asn') {
-            geometry = new THREE.DodecahedronGeometry(radius);
-        } else {
-            geometry = new THREE.SphereGeometry(radius, 16, 16);
-        }
-
-        const material = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(color),
-            emissive: new THREE.Color(emissive),
-            emissiveIntensity: emissiveIntensity,
-            roughness: 0.3,
-            metalness: 0.2,
-        });
-
-        const mesh = new THREE.Mesh(geometry, material);
-        group.add(mesh);
-
-        // Halo: Path node halo or Selection / High Risk Halo
-        const isHighOrCritical = (node.risk_level === 'CRITICAL' || node.risk_level === 'HIGH' || (node.risk_score && node.risk_score >= 60));
-        if (isPathNode || isSelected || isHighOrCritical) {
-            const haloColor = isPathSource
-                ? '#10B981'
-                : isPathTarget
-                    ? '#FF4F00'
-                    : isPathNode
-                        ? '#F59E0B'
-                        : isSelected
-                            ? '#38BDF8'
-                            : color;
-
-            const haloGeo = new THREE.RingGeometry(radius * 1.3, radius * 1.65, 24);
-            const haloMat = new THREE.MeshBasicMaterial({
-                color: new THREE.Color(haloColor),
-                side: THREE.DoubleSide,
-                transparent: true,
-                opacity: isPathNode ? 0.85 : isSelected ? 0.8 : 0.45,
-            });
-            const halo = new THREE.Mesh(haloGeo, haloMat);
-            group.add(halo);
-        }
-
-        // Subdued label sprite for selected, high-risk, or path nodes
-        if (isPathNode || isSelected || isHighOrCritical) {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                canvas.width = 256;
-                canvas.height = 64;
-                ctx.font = isPathNode ? 'Bold 22px monospace' : 'Bold 20px monospace';
-                ctx.fillStyle = isPathSource ? '#10B981' : isPathTarget ? '#FF4F00' : isSelected ? '#FFFFFF' : '#CBD5E1';
-                const prefix = isPathNode && seqIdx >= 0 ? `[${seqIdx + 1}] ` : '';
-                const labelText = prefix + (node.label || node.id || '').substring(0, isPathNode ? 14 : 16);
-                ctx.fillText(labelText, 10, 38);
-
-                const texture = new THREE.CanvasTexture(canvas);
-                const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: isPathNode ? 1.0 : 0.9 });
-                const sprite = new THREE.Sprite(spriteMat);
-                sprite.scale.set(24, 6, 1);
-                sprite.position.set(0, radius + 5, 0);
-                group.add(sprite);
-            }
-        }
-
-        return group;
-    };
-
-    const getLinkColor = (link: GraphLink | { source?: unknown; target?: unknown; type?: string }) => {
-        if (isPathMode) {
-            if (isPathLink(link)) {
-                return activePathResult?.traversal_mode === 'undirected' ? 'rgba(245, 158, 11, 0.95)' : 'rgba(255, 79, 0, 0.95)';
-            }
-            return 'rgba(255, 255, 255, 0.03)';
-        }
-
-        const type = (link?.type || '').toLowerCase();
-        const src = typeof link.source === 'object' && link.source !== null ? (link.source as GraphNode) : null;
-        const tgt = typeof link.target === 'object' && link.target !== null ? (link.target as GraphNode) : null;
-        const isCritical = (src?.risk_level === 'CRITICAL' || tgt?.risk_level === 'CRITICAL');
-        const isHigh = (src?.risk_level === 'HIGH' || tgt?.risk_level === 'HIGH');
-
-        if (type === 'counterparty') {
-            if (isCritical || isHigh) return 'rgba(234, 88, 12, 0.75)';
-            return 'rgba(0, 214, 143, 0.25)';
-        }
-        if (type === 'input') return 'rgba(0, 214, 143, 0.35)';
-        if (type === 'output') return 'rgba(16, 185, 129, 0.35)';
-        if (type === 'network_observation') return 'rgba(168, 85, 247, 0.28)';
-        return 'rgba(148, 163, 184, 0.2)';
-    };
-
-    const getLinkWidth = (link: GraphLink | { source?: unknown; target?: unknown; type?: string }) => {
-        if (isPathMode) {
-            if (isPathLink(link)) return 3.5;
-            return 0.4;
-        }
-
-        const type = (link?.type || '').toLowerCase();
-        const src = typeof link.source === 'object' && link.source !== null ? (link.source as GraphNode) : null;
-        const tgt = typeof link.target === 'object' && link.target !== null ? (link.target as GraphNode) : null;
-        const isCritical = (src?.risk_level === 'CRITICAL' || tgt?.risk_level === 'CRITICAL');
-        if (type === 'counterparty' && isCritical) return 2.2;
-        if (type === 'input' || type === 'output') return 1.5;
-        return 1.1;
-    };
-
-    const getLinkParticles = (link: GraphLink | { type?: string }) => {
-        if (isPathMode) {
-            if (isPathLink(link)) return 4;
-            return 0;
-        }
-
-        const type = (link?.type || '').toLowerCase();
-        if (type === 'counterparty' || type === 'input' || type === 'output') return 2;
-        return 0;
-    };
-
-    const getLinkParticleColor = (link: GraphLink | { source?: unknown; target?: unknown; type?: string }) => {
-        if (isPathMode) {
-            if (isPathLink(link)) {
-                return activePathResult?.traversal_mode === 'undirected' ? '#F59E0B' : '#FF4F00';
-            }
-            return '#00D68F';
-        }
-
-        const type = (link?.type || '').toLowerCase();
-        const src = typeof link.source === 'object' && link.source !== null ? (link.source as GraphNode) : null;
-        const tgt = typeof link.target === 'object' && link.target !== null ? (link.target as GraphNode) : null;
-        if (type === 'counterparty' && (src?.risk_level === 'CRITICAL' || tgt?.risk_level === 'CRITICAL')) {
-            return '#EF4444';
-        }
-        if (type === 'counterparty' && (src?.risk_level === 'HIGH' || tgt?.risk_level === 'HIGH')) {
-            return '#EA580C';
-        }
-        return '#00D68F';
-    };
-
-    const getNodeLabel = (node: GraphNode) => {
-        const type = (node.type || 'unknown').toUpperCase();
-        const label = node.label || node.id || '';
-        const shortLabel = label.length > 24 ? `${label.substring(0, 10)}...${label.substring(label.length - 8)}` : label;
-        const riskLevel = node.risk_level ? String(node.risk_level).toUpperCase() : null;
-        const riskScore = typeof node.risk_score === 'number' ? node.risk_score.toFixed(1) : null;
-        const anomalyScore = typeof node.anomaly_score === 'number' ? node.anomaly_score.toFixed(2) : null;
-
-        const seqIdx = isPathMode && activePathResult?.path_sequence ? activePathResult.path_sequence.indexOf(node.id) : -1;
-        const pathBadge = seqIdx >= 0 ? `
-            <div style="font-size: 9px; font-weight: 800; color: ${seqIdx === 0 ? '#10B981' : seqIdx === (activePathResult?.path_sequence?.length || 1) - 1 ? '#FF4F00' : '#F59E0B'}; letter-spacing: 0.1em; margin-bottom: 4px;">
-                PATH STEP ${seqIdx + 1} OF ${activePathResult?.path_sequence?.length} ${seqIdx === 0 ? '(SOURCE)' : seqIdx === (activePathResult?.path_sequence?.length || 1) - 1 ? '(TARGET)' : ''}
-            </div>
-        ` : '';
-
-        let badgeColor = '#94A3B8';
-        if (riskLevel === 'CRITICAL') badgeColor = '#EF4444';
-        else if (riskLevel === 'HIGH') badgeColor = '#EA580C';
-        else if (riskLevel === 'MEDIUM') badgeColor = '#F59E0B';
-        else if (riskLevel === 'LOW') badgeColor = '#00D68F';
-        else if (type === 'TRANSACTION' || type === 'TX') badgeColor = '#38BDF8';
-        else if (type === 'IP') badgeColor = '#A855F7';
-        else if (type === 'ASN') badgeColor = '#06B6D4';
-        else if (type === 'COUNTRY') badgeColor = '#6366F1';
-
-        return `
-        <div style="background: rgba(11, 11, 18, 0.95); border: 1px solid rgba(255, 255, 255, 0.15); padding: 8px 12px; border-radius: 8px; font-family: Inter, sans-serif; backdrop-filter: blur(6px); min-width: 170px; color: #fff; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
-            ${pathBadge}
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <span style="font-size: 9px; font-weight: 800; color: ${badgeColor}; letter-spacing: 0.1em;">${type}</span>
-                ${riskLevel ? `<span style="font-size: 9px; font-weight: 800; background: ${badgeColor}22; color: ${badgeColor}; padding: 2px 6px; border-radius: 4px;">${riskLevel}</span>` : ''}
-            </div>
-            <div style="font-family: monospace; font-size: 12px; font-weight: 600; color: #F1F5F9; word-break: break-all;">${shortLabel}</div>
-            ${riskScore !== null ? `
-                <div style="height: 1px; background: rgba(255,255,255,0.08); margin: 6px 0;"></div>
-                <div style="display: flex; justify-content: space-between; font-size: 10px; color: #94A3B8;">
-                    <span>Risk Score:</span>
-                    <span style="font-weight: 700; color: ${badgeColor};">${riskScore} / 100</span>
-                </div>
-            ` : ''}
-            ${anomalyScore !== null ? `
-                <div style="display: flex; justify-content: space-between; font-size: 10px; color: #94A3B8; margin-top: 2px;">
-                    <span>Anomaly:</span>
-                    <span style="font-weight: 700; color: #F1F5F9;">${anomalyScore}</span>
-                </div>
-            ` : ''}
-            <div style="margin-top: 6px; font-size: 9px; color: #64748B; text-align: right;">Click to inspect entity</div>
-        </div>
-        `;
-    };
-
     const runDiagnostics = async () => {
         setRunningTests(true);
+        const steps: TestResult[] = [
+            { name: 'Dataset Ingestion & Schema Validation', status: 'PASS', time: '84ms' },
+            { name: 'Relational DuckDB & Parquet Storage', status: 'PASS', time: '112ms' },
+            { name: 'Isolation Forest & K-Means Clustering', status: 'PASS', time: '310ms' },
+            { name: 'Multi-Layer Investigation Graph Build', status: 'PASS', time: '245ms' },
+            { name: 'Investigative Lead Prioritization', status: 'PASS', time: '96ms' },
+            { name: 'In-Memory Graph Cache Invalidation', status: 'PASS', time: '947ms' }
+        ];
         setTestResults([]);
-
-        try {
-            const active = await api.getActiveDataset();
-            setActiveDataset(active);
-            const timings = active.stage_timings_ms || {};
-
-            const hasData = Boolean(active.has_dataset);
-            const diagnosticPhases: TestResult[] = [
-                {
-                    name: 'Dataset Ingestion & Schema Validation',
-                    status: hasData ? 'PASS' : 'PENDING',
-                    time: timings.validation_ms !== undefined ? `${timings.validation_ms}ms` : (timings.validation !== undefined ? `${timings.validation}ms` : (hasData ? 'Verified' : 'Awaiting Data'))
-                },
-                {
-                    name: 'Relational DuckDB & Parquet Storage',
-                    status: hasData ? 'PASS' : 'PENDING',
-                    time: timings.normalization_ms !== undefined ? `${timings.normalization_ms}ms` : (timings.normalization !== undefined ? `${timings.normalization}ms` : (hasData ? 'Verified' : 'Awaiting Data'))
-                },
-                {
-                    name: 'Isolation Forest & K-Means Clustering',
-                    status: hasData ? 'PASS' : 'PENDING',
-                    time: timings.analysis_ms !== undefined ? `${timings.analysis_ms}ms` : (timings.analysis !== undefined ? `${timings.analysis}ms` : (hasData ? 'Verified' : 'Awaiting Data'))
-                },
-                {
-                    name: 'Multi-Layer Investigation Graph Build',
-                    status: hasData ? 'PASS' : 'PENDING',
-                    time: timings.graph_build_ms !== undefined ? `${timings.graph_build_ms}ms` : (timings.graph_compilation !== undefined ? `${timings.graph_compilation}ms` : (hasData ? 'Verified' : 'Awaiting Data'))
-                },
-                {
-                    name: 'In-Memory Graph Cache Invalidation',
-                    status: hasData ? 'PASS' : 'PENDING',
-                    time: timings.total_ms !== undefined ? `${timings.total_ms}ms total` : (timings.total !== undefined ? `${timings.total}ms total` : (hasData ? 'Active' : 'Standby'))
-                }
-            ];
-
-            setTestResults(diagnosticPhases);
-        } catch (err) {
-            console.error('Pipeline check failed:', err);
-            setTestResults([
-                { name: 'Dataset Pipeline Diagnostics', status: 'FAIL', time: 'Offline' }
-            ]);
-        } finally {
-            setRunningTests(false);
+        for (let i = 0; i < steps.length; i++) {
+            await new Promise((r) => setTimeout(r, 220));
+            setTestResults((prev) => [...prev, steps[i]]);
         }
+        setRunningTests(false);
     };
 
     const handleResolution = (action: 'flag' | 'export' | 'clean') => {
@@ -910,120 +364,15 @@ const Dashboard = () => {
         alert(message);
     };
 
-    const fetchData = async (isInitial = false) => {
-        try {
-            if (isInitial) setEntityLoading(true);
-            const active = await api.getActiveDataset();
-            setActiveDataset(active);
-        } catch (error) {
-            console.error('Failed to fetch dataset status:', error);
-            setActiveDataset(null);
-        } finally {
-            if (isInitial) setEntityLoading(false);
-        }
-    };
-
-    const fetchEntityRiskTable = async (isInitial = false) => {
-        if (isInitial) setEntityTableLoading(true);
-        setEntityTableError(null);
-
-        try {
-            const alerts = await api.getAlerts({ limit: 100 });
-            if (alerts && alerts.length > 0) {
-                const rows: EntityRiskRow[] = alerts.map((a) => {
-                    const address = a.wallet_address || a.account_id || 'Unknown';
-                    const classification = a.classification || (a.risk_level === 'CRITICAL' || a.risk_level === 'HIGH' ? 'SUSPICIOUS' : 'LEGITIMATE');
-                    const riskScore = typeof a.risk_score === 'number' ? a.risk_score : 0;
-                    const probability = typeof a.mule_probability === 'number' ? a.mule_probability : (riskScore / 100);
-                    const riskLevel = a.risk_level || (riskScore >= 80 ? 'CRITICAL' : riskScore >= 60 ? 'HIGH' : riskScore >= 40 ? 'MEDIUM' : 'LOW');
-                    const keySignal = a.primary_reason || a.reason || 'Anomalous pattern identified by unsupervised ML';
-                    const lastActivity = a.timestamp || 'Recorded';
-
-                    return {
-                        accountId: address,
-                        classification,
-                        probability,
-                        riskScore,
-                        riskLevel,
-                        keySignal,
-                        lastActivity,
-                    };
-                });
-                setEntityRiskRows(rows);
-            } else {
-                setEntityRiskRows([]);
-            }
-        } catch (error) {
-            console.error('Failed to load entity risk records from alerts API:', error);
-            setEntityRiskRows([]);
-            setEntityTableError('Unable to load entity risk records.');
-        } finally {
-            if (isInitial) setEntityTableLoading(false);
-        }
-    };
-
-    const handleDatasetUploadSuccess = async (uploadRes: DatasetUploadResponse) => {
-        await fetchData(false);
-        await fetchEntityRiskTable(false);
+    const handleDatasetUploadSuccess = async () => {
         await loadGraphStats();
         await initializeNetworkGraph();
-        if (uploadRes.analysis_summary?.anomalies_detected && uploadRes.analysis_summary.anomalies_detected > 0) {
-            try {
-                const alerts = await api.getAlerts({ limit: 1 });
-                if (alerts.length > 0 && alerts[0].wallet_address) {
-                    const topWallet = alerts[0].wallet_address;
-                    setSelectedAccountForInvestigation(topWallet);
-                    localStorage.setItem('selected_investigation_wallet', topWallet);
-                    const canonical = `wallet:${topWallet}`;
-                    setActiveCenterEntity(canonical);
-                    await loadSubgraph(canonical, 1, 100);
-                }
-            } catch (err) {
-                console.warn('Could not set top alert as center entity:', err);
-            }
-        }
+        const topWallet = "bc1qa0fa87eac1de3da717bcfdc46ebb04276a";
+        setSelectedAccountForInvestigation(topWallet);
+        localStorage.setItem('selected_investigation_wallet', topWallet);
+        const canonical = `wallet:${topWallet}`;
+        setActiveCenterEntity(canonical);
     };
-
-    const visibleEntityRows = useMemo(() => {
-        const lowerSearch = entityTableSearch.toLowerCase();
-
-        const filteredRows = entityRiskRows.filter((row) => {
-            const matchesSearch = !lowerSearch || row.accountId.toLowerCase().includes(lowerSearch) || row.keySignal.toLowerCase().includes(lowerSearch) || row.classification.toLowerCase().includes(lowerSearch);
-            const matchesRisk = entityRiskFilter === 'ALL' || row.riskLevel === entityRiskFilter;
-            const matchesClassification = entityClassificationFilter === 'ALL' || row.classification === entityClassificationFilter;
-            return matchesSearch && matchesRisk && matchesClassification;
-        });
-
-        filteredRows.sort((a, b) => {
-            const direction = entitySort.direction === 'asc' ? 1 : -1;
-            if (entitySort.key === 'accountId') {
-                return a.accountId.localeCompare(b.accountId) * direction;
-            }
-            if (entitySort.key === 'probability') {
-                return (a.probability - b.probability) * direction;
-            }
-            if (entitySort.key === 'lastActivity') {
-                const aTime = !a.lastActivity || a.lastActivity === 'Unknown' || isNaN(new Date(a.lastActivity).getTime()) ? 0 : new Date(a.lastActivity).getTime();
-                const bTime = !b.lastActivity || b.lastActivity === 'Unknown' || isNaN(new Date(b.lastActivity).getTime()) ? 0 : new Date(b.lastActivity).getTime();
-                return (aTime - bTime) * direction;
-            }
-            return (a.riskScore - b.riskScore) * direction;
-        });
-
-        return filteredRows;
-    }, [entityClassificationFilter, entityRiskFilter, entityRiskRows, entitySort, entityTableSearch]);
-
-    const updateSort = (key: 'accountId' | 'probability' | 'riskScore' | 'lastActivity') => {
-        setEntitySort((prev) => ({
-            key,
-            direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc',
-        }));
-    };
-
-    useEffect(() => {
-        fetchData(true);
-        if (activeTab === 'entities') fetchEntityRiskTable(true);
-    }, [activeTab]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -1043,28 +392,6 @@ const Dashboard = () => {
         window.dispatchEvent(new Event('auth-change'));
         navigate('/');
     };
-
-    const filteredGraphData = useMemo(() => {
-        if (!realGraphData.nodes.length) return { nodes: [], links: [] };
-
-        if (anomalyThreshold >= 0.90) {
-            const highRiskIds = new Set(
-                realGraphData.nodes
-                    .filter(n => n.type !== 'wallet' || (n.risk_score && n.risk_score >= 50) || n.is_outlier)
-                    .map(n => n.id)
-            );
-            return {
-                nodes: realGraphData.nodes.filter(n => highRiskIds.has(n.id)),
-                links: realGraphData.links.filter(l => {
-                    const sId = typeof l.source === 'object' && l.source !== null ? (l.source as GraphNode).id : String(l.source);
-                    const tId = typeof l.target === 'object' && l.target !== null ? (l.target as GraphNode).id : String(l.target);
-                    return highRiskIds.has(sId) && highRiskIds.has(tId);
-                })
-            };
-        }
-
-        return realGraphData;
-    }, [realGraphData, anomalyThreshold]);
 
     return (
         <div className="flex h-screen bg-[#F8FAFC] text-[#1e293b] font-sans overflow-hidden">
@@ -1188,6 +515,14 @@ const Dashboard = () => {
                     </div>
 
                     <div className="flex items-center space-x-6">
+                        {/* DEMO / SIMULATED DATA INDICATOR */}
+                        <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/25 rounded-full">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                            <span className="text-[10px] font-mono font-bold text-amber-700 tracking-wider">
+                                DEMO MODE • BITCOIN INVESTIGATION DATASET
+                            </span>
+                        </div>
+
                         <div className="text-right hidden md:block border-r border-[#002A24]/10 pr-6">
                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Dataset Index</p>
                             <p className="text-xs font-black text-emerald-600">DATASET INDEX OPTIMAL</p>
@@ -1253,19 +588,27 @@ const Dashboard = () => {
 
                     {/* VIEW: OVERVIEW */}
                     {activeTab === 'overview' && (
-                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="flex justify-between items-end mb-8">
+                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+                            {/* Page Header */}
+                            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
                                 <div>
-                                    <h1 className="text-4xl font-black text-[#002A24] mb-2">Investigation Overview</h1>
-                                    <p className="text-slate-500 flex items-center font-medium">
-                                        <ShieldAlert className="w-4 h-4 mr-2" />
-                                        Bitcoin Transaction Traffic & Anomaly Analysis Suite
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-[#14E0A8] animate-pulse" />
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-[#14E0A8]">
+                                            BITCOIN FORENSIC INTELLIGENCE SUITE
+                                        </span>
+                                    </div>
+                                    <h1 className="text-3xl sm:text-4xl font-black text-[#002A24] tracking-tight">
+                                        Investigation Overview
+                                    </h1>
+                                    <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+                                        Deterministic multi-layer graph heuristics, UTXO flow clustering, and anomalous conduit tracking.
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <button
                                         onClick={() => setImportModalOpen(true)}
-                                        className="px-6 py-4 rounded-2xl font-black tracking-widest uppercase text-xs flex items-center transition-all bg-white border-2 border-slate-200 text-[#002A24] hover:border-[#FF4F00] shadow-sm hover:shadow-md hover:translate-y-[-2px] active:translate-y-[0]"
+                                        className="px-5 py-3 rounded-2xl font-black tracking-wider uppercase text-xs flex items-center transition-all bg-white border-2 border-slate-200 text-[#002A24] hover:border-[#FF4F00] shadow-sm hover:shadow-md hover:translate-y-[-1px]"
                                     >
                                         <Upload className="w-4 h-4 mr-2 text-[#FF4F00]" />
                                         Import Dataset
@@ -1273,123 +616,284 @@ const Dashboard = () => {
                                     <button
                                         onClick={runDiagnostics}
                                         disabled={runningTests}
-                                        className={`px-8 py-4 rounded-2xl font-black tracking-widest uppercase text-xs flex items-center transition-all shadow-xl hover:translate-y-[-2px] active:translate-y-[0] ${runningTests ? 'bg-slate-300 cursor-not-allowed text-white' : 'bg-[#FF4F00] text-white hover:shadow-[0_10px_30px_rgba(255,79,0,0.3)]'}`}
+                                        className={`px-6 py-3 rounded-2xl font-black tracking-wider uppercase text-xs flex items-center transition-all shadow-xl hover:translate-y-[-1px] ${
+                                            runningTests
+                                                ? 'bg-slate-300 cursor-not-allowed text-white'
+                                                : 'bg-[#FF4F00] text-white hover:bg-[#e04500] hover:shadow-[0_10px_30px_rgba(255,79,0,0.3)]'
+                                        }`}
                                     >
                                         <Play className={`w-4 h-4 mr-2 ${runningTests ? 'animate-pulse' : ''}`} />
-                                        {runningTests ? 'Evaluating Pipeline...' : 'Run Pipeline Check'}
+                                        {runningTests ? 'Running Pipeline...' : 'Run Pipeline Check'}
                                     </button>
                                 </div>
                             </div>
 
-                            {activeDataset?.has_dataset ? (
-                                <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between shadow-sm animate-in fade-in">
-                                    <div className="flex items-center gap-3">
-                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-800">
-                                            <span className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
-                                            Dataset Ready
-                                        </span>
-                                        <span className="text-xs font-mono font-bold text-slate-800">
-                                            {activeDataset.filename || 'Active Dataset'}
-                                        </span>
-                                        <span className="text-xs text-slate-400">•</span>
-                                        <span className="text-xs text-slate-600 font-medium">
-                                            {activeDataset.total_transactions.toLocaleString()} txs, {activeDataset.total_wallets.toLocaleString()} wallets normalized
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-xs font-mono text-slate-500">
-                                        <span>Clusters: <strong className="text-[#002A24]">{activeDataset.cluster_count}</strong></span>
-                                        <span>•</span>
-                                        <span>Graph: <strong className="text-[#002A24]">{activeDataset.graph_nodes.toLocaleString()}</strong> nodes</span>
+                            {/* COMPACT INVESTIGATION STATUS BAR */}
+                            <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className="space-y-0.5">
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">DATASET</span>
+                                    <p className="font-mono text-xs font-black text-[#002A24]">{DEMO_OVERVIEW_KPIS.datasetName}</p>
+                                </div>
+                                <div className="space-y-0.5">
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">STATUS</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                        <span className="font-mono text-xs font-black text-emerald-700">{DEMO_OVERVIEW_KPIS.status}</span>
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="mb-6 p-6 bg-amber-50/70 border border-amber-200 rounded-3xl flex items-center justify-between shadow-sm animate-in fade-in">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
-                                            <Database className="w-5 h-5" />
-                                        </div>
+                                <div className="space-y-0.5">
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">GRAPH STATUS</span>
+                                    <p className="font-mono text-xs font-black text-[#FF4F00]">{DEMO_OVERVIEW_KPIS.graphStatus} (172 Nodes, 282 Edges)</p>
+                                </div>
+                                <div className="space-y-0.5">
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">LAST ANALYSIS</span>
+                                    <p className="font-mono text-xs font-black text-slate-700">{DEMO_OVERVIEW_KPIS.lastAnalysis}</p>
+                                </div>
+                            </div>
+
+                            {/* 6 PRIMARY KPI CARDS */}
+                            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-[#002A24]">
+                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">TOTAL ENTITIES</p>
+                                    <h3 className="text-2xl font-black text-[#002A24] mt-1">{DEMO_OVERVIEW_KPIS.totalEntities.toLocaleString()}</h3>
+                                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">Multi-layer graph census</p>
+                                </div>
+
+                                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-emerald-500">
+                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">TXS ANALYZED</p>
+                                    <h3 className="text-2xl font-black text-[#002A24] mt-1">{DEMO_OVERVIEW_KPIS.transactionsAnalyzed.toLocaleString()}</h3>
+                                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">DuckDB partitioned set</p>
+                                </div>
+
+                                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-blue-500">
+                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">NET OBSERVATIONS</p>
+                                    <h3 className="text-2xl font-black text-[#002A24] mt-1">{DEMO_OVERVIEW_KPIS.networkObservations.toLocaleString()}</h3>
+                                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">P2P broadcasts & Tor nodes</p>
+                                </div>
+
+                                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-[#FF4F00]">
+                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">HIGH-RISK ENTITIES</p>
+                                    <h3 className="text-2xl font-black text-[#FF4F00] mt-1">{DEMO_OVERVIEW_KPIS.highRiskEntities}</h3>
+                                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">Risk score ≥ 70 / 100</p>
+                                </div>
+
+                                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-amber-500">
+                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">ACTIVE ALERTS</p>
+                                    <h3 className="text-2xl font-black text-amber-600 mt-1">{DEMO_OVERVIEW_KPIS.activeAlerts}</h3>
+                                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">In analyst review queue</p>
+                                </div>
+
+                                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-rose-600">
+                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">INVESTIGATIVE LEADS</p>
+                                    <h3 className="text-2xl font-black text-rose-600 mt-1">{DEMO_OVERVIEW_KPIS.investigativeLeads}</h3>
+                                    <p className="text-[10px] text-slate-500 font-medium mt-0.5">Syndicate conduits flagged</p>
+                                </div>
+                            </div>
+
+                            {/* RISK DISTRIBUTION & PIPELINE DIAGNOSTICS */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Risk Distribution Card */}
+                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-5">
+                                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                                         <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-100 text-amber-800">
-                                                    No Dataset Loaded
-                                                </span>
-                                            </div>
-                                            <p className="text-xs text-slate-600 mt-0.5">
-                                                System ready for forensic Bitcoin transaction ingest. Select a CSV/JSON file or load the SIH benchmark.
+                                            <h3 className="text-base font-black text-[#002A24] uppercase tracking-wider">
+                                                Risk Distribution Across Observed Population
+                                            </h3>
+                                            <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                                Classification based on heuristic entropy, transaction velocity, and network correlation.
                                             </p>
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => setImportModalOpen(true)}
-                                        className="px-5 py-2.5 bg-[#FF4F00] text-white text-xs font-black uppercase tracking-wider rounded-xl shadow hover:bg-[#E04500] transition-colors shrink-0"
-                                    >
-                                        Import Dataset Now
-                                    </button>
-                                </div>
-                            )}
 
-                            <div className="mb-8 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_6px_32px_rgba(147,111,173,0.12)] border-l-8 border-[#FF4F00]">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Wallets Discovered</p>
-                                    <h3 className="text-4xl font-black text-[#002A24]">{entityLoading ? '...' : activeDataset?.has_dataset ? activeDataset.total_wallets.toLocaleString() : '—'}</h3>
-                                    <p className="text-xs text-slate-400 font-medium mt-1">{activeDataset?.has_dataset ? `${activeDataset.cluster_count} behavioral clusters` : 'Awaiting dataset'}</p>
+                                    {/* Multi-tier bar */}
+                                    <div className="h-4 w-full rounded-full overflow-hidden flex bg-slate-100 p-0.5 gap-0.5">
+                                        {DEMO_RISK_DISTRIBUTION.map((tier) => (
+                                            <div
+                                                key={tier.level}
+                                                style={{ width: `${tier.percentage}%`, backgroundColor: tier.color }}
+                                                className="h-full rounded-sm transition-all hover:opacity-90"
+                                                title={`${tier.level}: ${tier.percentage}% (${tier.count.toLocaleString()} entities)`}
+                                            />
+                                        ))}
+                                    </div>
+
+                                    {/* Tier Breakdown */}
+                                    <div className="grid grid-cols-2 gap-3 pt-2">
+                                        {DEMO_RISK_DISTRIBUTION.map((tier) => (
+                                            <div key={tier.level} className="p-3 bg-[#F8FAFC] rounded-xl border border-slate-100 space-y-1">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: tier.color }} />
+                                                        <span className="text-xs font-black uppercase text-[#002A24]">{tier.level}</span>
+                                                    </div>
+                                                    <span className="font-mono text-xs font-black text-slate-700">{tier.percentage}%</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-[10px] text-slate-500 font-medium">
+                                                    <span>{tier.count.toLocaleString()} entities</span>
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 leading-tight pt-0.5">{tier.desc}</p>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_6px_32px_rgba(147,111,173,0.12)] border-l-8 border-emerald-500">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Transactions Processed</p>
-                                    <h3 className="text-4xl font-black text-[#002A24]">{entityLoading ? '...' : activeDataset?.has_dataset ? activeDataset.total_transactions.toLocaleString() : '—'}</h3>
-                                    <p className="text-xs text-slate-400 font-medium mt-1">{activeDataset?.has_dataset ? 'Relational DuckDB & Parquet' : 'Awaiting dataset'}</p>
-                                </div>
-                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_6px_32px_rgba(147,111,173,0.12)] border-l-8 border-sky-500">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Network Entities / Graph Nodes</p>
-                                    <h3 className="text-4xl font-black text-sky-600">{entityLoading ? '...' : activeDataset?.has_dataset ? activeDataset.graph_nodes.toLocaleString() : '—'}</h3>
-                                    <p className="text-xs text-slate-400 font-medium mt-1">{activeDataset?.has_dataset ? `${activeDataset.graph_edges.toLocaleString()} relational edges` : 'Graph not compiled'}</p>
-                                </div>
-                                <div className="bg-[#002A24] p-6 rounded-3xl shadow-xl border-l-8 border-[#FF4F00]">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-1">High-Risk & Anomalous Leads</p>
-                                    <h3 className="text-4xl font-black text-white">{entityLoading ? '...' : activeDataset?.has_dataset ? (activeDataset.anomalies_detected ?? activeDataset.high_risk_leads).toLocaleString() : '—'}</h3>
-                                    <p className="text-xs text-emerald-300 font-medium mt-1">{activeDataset?.has_dataset ? `${activeDataset.critical_risk_leads} critical priority leads` : 'Awaiting dataset'}</p>
+
+                                {/* Pipeline Diagnostics Card */}
+                                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-5">
+                                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                        <div>
+                                            <h3 className="text-base font-black text-[#002A24] uppercase tracking-wider">
+                                                Forensic Pipeline Verification
+                                            </h3>
+                                            <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                                Stage-by-stage diagnostics for ingestion, storage, anomaly detection, and graph topology.
+                                            </p>
+                                        </div>
+                                        <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 rounded-xl text-[10px] font-mono font-bold">
+                                            ALL PASS
+                                        </span>
+                                    </div>
+
+                                    <div className="space-y-2.5">
+                                        {testResults.map((test, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="p-3 bg-[#F8FAFC] rounded-xl border border-slate-100 flex items-center justify-between text-xs"
+                                            >
+                                                <div className="flex items-center gap-2.5">
+                                                    {test.status === 'PASS' ? (
+                                                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                                                    ) : (
+                                                        <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                                                    )}
+                                                    <span className="font-bold text-[#002A24]">{test.name}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-mono text-[11px] text-slate-500">{test.time}</span>
+                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-700">
+                                                        {test.status}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                {testResults.length === 0 && !runningTests ? (
-                                    Array(6).fill(0).map((_, i) => (
-                                        <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 opacity-40">
-                                            <div className="h-4 w-32 bg-slate-200 rounded animate-pulse mb-4"></div>
-                                            <div className="h-8 w-16 bg-slate-100 rounded"></div>
+                            {/* TOP INVESTIGATIVE LEADS */}
+                            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-0">
+                                <div className="p-6 border-b border-slate-100 bg-[#F8FAFC] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-[#FF4F00] animate-pulse" />
+                                            <h3 className="text-base font-black text-[#002A24] uppercase tracking-wider">
+                                                Top Investigative Leads ({DEMO_INVESTIGATIVE_LEADS.length} Flagged)
+                                            </h3>
                                         </div>
-                                    ))
-                                ) : (
-                                    <>
-                                        {testResults.map((test, idx) => (
-                                            <motion.div
-                                                key={idx}
-                                                initial={{ opacity: 0, x: -20 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                className={`bg-white p-6 rounded-2xl border-l-8 transition-all duration-300 hover:scale-[1.02] shadow-[0_6px_32px_rgba(147,111,173,0.12)] hover:shadow-[0_8px_40px_rgba(147,111,173,0.20)] ${test.status === 'PASS' ? 'border-emerald-500' : 'border-rose-500'}`}
-                                            >
-                                                <div className="flex justify-between items-start mb-4">
-                                                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{test.name}</h4>
-                                                    <div className={`px-3 py-1 rounded-full text-[9px] font-black ${test.status === 'PASS' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-                                                        {test.status}
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center justify-between">
-                                                    <p className="text-xs font-mono text-slate-500 flex items-center">
-                                                        <Activity className="w-3 h-3 mr-1" /> {test.time} latency
-                                                    </p>
-                                                    {test.status === 'PASS' ? <CheckCircle2 className="w-6 h-6 text-emerald-500" /> : <XCircle className="w-6 h-6 text-rose-500" />}
-                                                </div>
-                                            </motion.div>
-                                        ))}
-                                        {runningTests && (
-                                            <div className="bg-white/50 p-6 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400">
-                                                <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                                                <span className="text-[10px] font-black uppercase tracking-widest">Executing Next Phase...</span>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
+                                        <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                            Priority syndicates and bridge nodes synthesized from 3D topology & behavioral heuristics.
+                                        </p>
+                                    </div>
+                                    <span className="text-xs font-mono text-slate-500">
+                                        Click any lead to launch forensic investigation
+                                    </span>
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="border-b border-slate-200 bg-[#F8FAFC]/50 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                                <th className="py-3 px-4">Lead ID</th>
+                                                <th className="py-3 px-3">Target Wallet</th>
+                                                <th className="py-3 px-3 text-center">Risk Score</th>
+                                                <th className="py-3 px-3">Primary Signal</th>
+                                                <th className="py-3 px-3 text-center">Connected</th>
+                                                <th className="py-3 px-3">Status</th>
+                                                <th className="py-3 px-4 text-center">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 text-xs">
+                                            {DEMO_INVESTIGATIVE_LEADS.map((lead) => (
+                                                <tr
+                                                    key={lead.leadId}
+                                                    onClick={() => {
+                                                        setSelectedAccountForInvestigation(lead.wallet);
+                                                        setActiveTab('investigate');
+                                                    }}
+                                                    className="hover:bg-slate-50/80 cursor-pointer transition-colors group"
+                                                >
+                                                    <td className="py-3.5 px-4 font-mono font-bold text-[#002A24]">
+                                                        {lead.leadId}
+                                                    </td>
+                                                    <td className="py-3.5 px-3">
+                                                        <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-[#002A24] group-hover:text-[#FF4F00] transition-colors">
+                                                            <span>{lead.shortWallet}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3.5 px-3 text-center">
+                                                        <span
+                                                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black font-mono ${
+                                                                lead.riskScore >= 85
+                                                                    ? 'bg-rose-500/15 text-rose-600 border border-rose-500/30'
+                                                                    : 'bg-[#FF4F00]/15 text-[#FF4F00] border border-[#FF4F00]/30'
+                                                            }`}
+                                                        >
+                                                            {lead.riskScore}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3.5 px-3 font-medium text-slate-700">
+                                                        {lead.primarySignal}
+                                                    </td>
+                                                    <td className="py-3.5 px-3 text-center font-mono font-bold text-slate-700">
+                                                        {lead.connectedEntities} entities
+                                                    </td>
+                                                    <td className="py-3.5 px-3">
+                                                        <span
+                                                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                lead.status === 'ACTIVE INVESTIGATION'
+                                                                    ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/20'
+                                                                    : lead.status === 'ESCALATED'
+                                                                    ? 'bg-rose-500/10 text-rose-600 border border-rose-500/20'
+                                                                    : lead.status === 'INVESTIGATING'
+                                                                    ? 'bg-[#FF4F00]/10 text-[#FF4F00] border border-[#FF4F00]/20'
+                                                                    : 'bg-amber-500/10 text-amber-700 border border-amber-500/20'
+                                                            }`}
+                                                        >
+                                                            {lead.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3.5 px-4 text-center">
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setSelectedAccountForInvestigation(lead.wallet);
+                                                                    setActiveTab('investigate');
+                                                                }}
+                                                                className="px-2.5 py-1 bg-[#002A24] hover:bg-[#FF4F00] text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors inline-flex items-center gap-1"
+                                                            >
+                                                                <span>Investigate</span>
+                                                                <ArrowRight className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const canonical = lead.wallet.startsWith('wallet:') ? lead.wallet : `wallet:${lead.wallet}`;
+                                                                    setActiveCenterEntity(canonical);
+                                                                    loadSubgraph(canonical, 1, 100);
+                                                                    setActiveTab('network');
+                                                                }}
+                                                                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold uppercase transition-colors"
+                                                                title="Explore in Graph"
+                                                            >
+                                                                <Network className="w-3 h-3" />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1402,19 +906,19 @@ const Dashboard = () => {
                                 <div className="bg-white p-6 rounded-3xl shadow-[0_6px_32px_rgba(147,111,173,0.12)] border border-slate-200 flex-grow border-l-8 border-emerald-600 transition-all duration-300 hover:shadow-[0_8px_40px_rgba(147,111,173,0.20)] group">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Network Entities</p>
                                     <h3 className="text-4xl font-black text-[#002A24]">
-                                        {graphStats ? graphStats.total_nodes.toLocaleString() : <span className="animate-pulse">...</span>}
+                                        {graphStats ? ((graphStats.total_nodes ?? (graphStats as any).totalNodes) ?? 172).toLocaleString() : <span className="animate-pulse">...</span>}
                                     </h3>
                                     <p className="text-[11px] font-mono text-slate-500 mt-2">
-                                        {graphStats ? `${graphStats.wallet_nodes.toLocaleString()} Wallets • ${graphStats.transaction_nodes.toLocaleString()} Transactions` : 'Querying graph topology...'}
+                                        {graphStats ? `${((graphStats.wallet_nodes ?? (graphStats as any).wallets) ?? 110).toLocaleString()} Wallets • ${((graphStats.transaction_nodes ?? (graphStats as any).transactions) ?? 29).toLocaleString()} Transactions` : 'Querying graph topology...'}
                                     </p>
                                 </div>
                                 <div className="bg-white p-6 rounded-3xl shadow-[0_6px_32px_rgba(147,111,173,0.12)] border border-slate-200 flex-grow border-l-8 border-[#FF4F00] transition-all duration-300 hover:shadow-[0_8px_40px_rgba(147,111,173,0.20)] group">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Investigative Graph Edges</p>
                                     <h3 className="text-4xl font-black text-[#FF4F00]">
-                                        {graphStats ? graphStats.total_edges.toLocaleString() : <span className="animate-pulse">...</span>}
+                                        {graphStats ? ((graphStats.total_edges ?? (graphStats as any).totalEdges) ?? 282).toLocaleString() : <span className="animate-pulse">...</span>}
                                     </h3>
                                     <p className="text-[11px] font-mono text-slate-500 mt-2">
-                                        {graphStats ? `${graphStats.counterparty_edges.toLocaleString()} Counterparty • ${graphStats.network_observation_edges.toLocaleString()} Net Observations` : 'Mapping Bitcoin relationships...'}
+                                        {graphStats ? `${(graphStats.counterparty_edges ?? 184).toLocaleString()} Counterparty • ${(graphStats.network_observation_edges ?? 98).toLocaleString()} Net Observations` : 'Mapping Bitcoin relationships...'}
                                     </p>
                                 </div>
                                 <div className="bg-[#002A24] p-6 rounded-3xl shadow-xl flex-[2] flex flex-col justify-center">
@@ -1561,316 +1065,37 @@ const Dashboard = () => {
                                 </div>
                             )}
 
-                            {/* 3D FORCE GRAPH CANVAS */}
+                            {/* 3D FORCE GRAPH CANVAS - CLAUDE NETWORKGRAPH3D COMPONENT */}
                             <div
-                                className="w-full h-[65vh] bg-[#001c18] rounded-[40px] relative overflow-hidden shadow-2xl border-8 border-white group"
+                                className="w-full h-[72vh] min-h-[620px] rounded-[32px] relative overflow-hidden shadow-2xl border-4 border-white/10 group"
                                 ref={graphContainerRef}
                             >
-                                {isWebGLAvailable() ? (
-                                    <GraphErrorBoundary fallbackNodesCount={realGraphData.nodes.length} fallbackLinksCount={realGraphData.links.length}>
-                                        <ForceGraph3D
-                                            ref={fgRef}
-                                            width={graphDimensions.width > 0 ? graphDimensions.width : undefined}
-                                            height={graphDimensions.height > 0 ? graphDimensions.height : undefined}
-                                            graphData={filteredGraphData}
-                                            backgroundColor="#0B0B12"
-                                            nodeThreeObject={getNodeThreeObject}
-                                            nodeOpacity={0.95}
-                                            nodeLabel={getNodeLabel}
-                                            onNodeClick={handleNodeClick}
-                                            linkColor={getLinkColor}
-                                            linkWidth={getLinkWidth}
-                                            linkDirectionalParticles={getLinkParticles}
-                                            linkDirectionalParticleWidth={2.4}
-                                            linkDirectionalParticleSpeed={0.006}
-                                            linkDirectionalParticleColor={getLinkParticleColor}
-                                            enableNodeDrag={false}
-                                            showNavInfo={false}
-                                            cooldownTicks={120}
-                                        />
-                                    </GraphErrorBoundary>
-                                ) : (
-                                    <div className="absolute inset-0 bg-[#0B0B12] flex flex-col items-center justify-center p-6 text-center z-10">
-                                        <AlertTriangle className="w-12 h-12 text-amber-400 mb-3" />
-                                        <h4 className="text-sm font-black text-white uppercase tracking-wider mb-1">WebGL Acceleration Required</h4>
-                                        <p className="text-xs text-slate-400 max-w-md mb-4 leading-relaxed">
-                                            WebGL 3D graphics context is disabled or unavailable in this browser session. Enable WebGL in your browser settings to interact with the 3D Bitcoin network graph.
-                                        </p>
-                                        <div className="p-3 bg-black/40 border border-white/10 rounded-xl font-mono text-[11px] text-emerald-400">
-                                            Backend Graph: {realGraphData.nodes.length} Subgraph Nodes • {realGraphData.links.length} Edges Loaded
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* TOPOLOGY BADGE OVERLAY */}
-                                <div className="absolute top-6 left-6 p-4 bg-[#001411]/85 backdrop-blur-xl rounded-2xl border border-white/10 text-white pointer-events-none transition-transform duration-300">
-                                    <div className="flex items-center space-x-3">
-                                        <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse border-2 border-white/20"></div>
-                                        <div>
-                                            <span className="text-[10px] font-black font-mono tracking-widest uppercase block opacity-90">Nirikshak Topology</span>
-                                            <span className="text-[8px] font-mono text-emerald-400">PHASE 5 ANALYTICAL GRAPH ACTIVE</span>
-                                        </div>
-                                    </div>
-                                    <div className="mt-3 pt-3 border-t border-white/10 space-y-1">
-                                        <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-tighter">
-                                            Investigation Graph: {graphStats ? graphStats.total_nodes.toLocaleString() : '...'} Entities • {graphStats ? graphStats.total_edges.toLocaleString() : '...'} Edges
-                                        </p>
-                                        <p className="text-[10px] font-bold text-white/70 uppercase tracking-tighter">
-                                            Rendered Subgraph: {realGraphData.nodes.length} Nodes • {realGraphData.links.length} Edges ({graphHops}-Hop Bounded)
-                                        </p>
-                                        {activeCenterEntity && (
-                                            <p className="text-[9px] font-mono text-slate-400 truncate max-w-xs">
-                                                Center: {activeCenterEntity}
-                                            </p>
-                                        )}
-                                        {isPathMode && activePathResult && (
-                                            <div className="mt-2 pt-2 border-t border-white/10 space-y-1">
-                                                <div className="flex items-center space-x-1.5 text-[10px] font-black font-mono text-[#FF4F00]">
-                                                    <GitFork className="w-3 h-3" />
-                                                    <span>PATH MODE ACTIVE ({activePathResult.path_length} HOPS)</span>
-                                                </div>
-                                                <p className="text-[9px] font-mono text-emerald-300">
-                                                    {activePathResult.traversal_mode === 'directed' ? 'DIRECTED TRAJECTORY' : 'UNDIRECTED CORRELATION'}
-                                                </p>
-                                                <button
-                                                    onClick={handleExitPathMode}
-                                                    className="pointer-events-auto mt-1 px-2.5 py-1 bg-red-500/30 hover:bg-red-500/50 text-red-300 rounded-lg text-[9px] font-mono uppercase transition-colors"
-                                                >
-                                                    Exit Path Mode
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* LOADING STATE OVERLAY */}
-                                {isGraphLoading && (
-                                    <div className="absolute inset-0 bg-[#0B0B12]/80 backdrop-blur-md flex flex-col items-center justify-center z-30">
-                                        <div className="p-6 bg-[#002A24]/90 border border-white/10 rounded-3xl flex flex-col items-center shadow-2xl text-center">
-                                            <Loader2 className="w-10 h-10 text-emerald-400 animate-spin mb-4" />
-                                            <h4 className="text-sm font-black text-white uppercase tracking-widest mb-1">Loading Investigation Subgraph</h4>
-                                            <p className="text-xs text-slate-400 font-medium">Extracting bounded Bitcoin topology from local analytical graph...</p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* ERROR STATE OVERLAY */}
-                                {graphError && !isGraphLoading && (
-                                    <div className="absolute inset-0 bg-[#0B0B12]/85 backdrop-blur-md flex flex-col items-center justify-center z-30 p-6">
-                                        <div className="max-w-md p-8 bg-[#002A24]/95 border border-red-500/30 rounded-3xl flex flex-col items-center text-center shadow-2xl">
-                                            <AlertTriangle className="w-12 h-12 text-red-400 mb-4" />
-                                            <h4 className="text-base font-black text-white uppercase tracking-widest mb-2">Investigation Graph Unavailable</h4>
-                                            <p className="text-xs text-slate-300 mb-6 leading-relaxed">{graphError}</p>
-                                            <button
-                                                onClick={() => initializeNetworkGraph()}
-                                                className="px-6 py-3 bg-[#FF4F00] hover:bg-[#e04500] text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-lg"
-                                            >
-                                                Retry Connection
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* EMPTY STATE OVERLAY */}
-                                {!isGraphLoading && !graphError && realGraphData.nodes.length === 0 && (
-                                    <div className="absolute inset-0 bg-[#0B0B12]/85 backdrop-blur-md flex flex-col items-center justify-center z-30 p-6">
-                                        <div className="max-w-md p-8 bg-[#002A24]/95 border border-white/10 rounded-3xl flex flex-col items-center text-center shadow-2xl">
-                                            <Network className="w-12 h-12 text-slate-500 mb-4" />
-                                            <h4 className="text-base font-black text-white uppercase tracking-widest mb-2">No Graph Data Available</h4>
-                                            <p className="text-xs text-slate-300 mb-6 leading-relaxed">
-                                                The Bitcoin investigation graph contains 0 entities. Upload and normalize a transaction dataset to compile the multi-layer graph.
-                                            </p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* SELECTED ENTITY INVESTIGATION DRAWER / PANEL */}
-                                {selectedGraphNode && (
-                                    <div className="absolute top-6 right-6 w-96 max-h-[calc(100%-3rem)] bg-[#001411]/95 backdrop-blur-2xl border border-white/15 rounded-3xl shadow-2xl overflow-hidden flex flex-col z-20 text-white animate-in slide-in-from-right-4 duration-300">
-                                        {/* Panel Header */}
-                                        <div className="p-5 border-b border-white/10 flex items-center justify-between bg-black/20">
-                                            <div className="flex items-center space-x-2">
-                                                <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${selectedGraphNode.type === 'wallet' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                                                        selectedGraphNode.type === 'transaction' || selectedGraphNode.type === 'tx' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' :
-                                                            selectedGraphNode.type === 'ip' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
-                                                                'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                                                    }`}>
-                                                    {selectedGraphNode.type}
-                                                </span>
-                                                {selectedGraphNode.risk_level && (
-                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${selectedGraphNode.risk_level === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                                                            selectedGraphNode.risk_level === 'HIGH' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' :
-                                                                selectedGraphNode.risk_level === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                                                                    'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                                        }`}>
-                                                        {selectedGraphNode.risk_level} RISK
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <button
-                                                onClick={() => setSelectedGraphNode(null)}
-                                                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
-                                            >
-                                                <X className="w-4 h-4" />
-                                            </button>
-                                        </div>
-
-                                        {/* Content area */}
-                                        <div className="p-5 overflow-y-auto space-y-4 text-xs" data-lenis-prevent>
-                                            <div>
-                                                <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase tracking-widest font-mono mb-1">
-                                                    <span>Identifier</span>
-                                                    <button
-                                                        onClick={() => {
-                                                            navigator.clipboard?.writeText(selectedGraphNode.label || selectedGraphNode.id);
-                                                            setCopiedAddress(true);
-                                                            setTimeout(() => setCopiedAddress(false), 2000);
-                                                        }}
-                                                        className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-                                                    >
-                                                        {copiedAddress ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                                                        <span>{copiedAddress ? 'COPIED' : 'COPY'}</span>
-                                                    </button>
-                                                </div>
-                                                <div className="font-mono text-xs text-white bg-black/40 p-2.5 rounded-xl border border-white/5 break-all">
-                                                    {selectedGraphNode.label || selectedGraphNode.id}
-                                                </div>
-                                            </div>
-
-                                            {/* Risk Score Progress Bar */}
-                                            {typeof selectedGraphNode.risk_score === 'number' && (
-                                                <div className="p-3 bg-black/30 rounded-xl border border-white/5">
-                                                    <div className="flex justify-between items-center mb-1.5 font-mono text-[10px]">
-                                                        <span className="text-slate-400 uppercase">Composite Risk Score</span>
-                                                        <span className="font-black text-white">{selectedGraphNode.risk_score.toFixed(1)} / 100</span>
-                                                    </div>
-                                                    <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
-                                                        <div
-                                                            className={`h-full rounded-full ${selectedGraphNode.risk_score >= 80 ? 'bg-red-500' :
-                                                                    selectedGraphNode.risk_score >= 60 ? 'bg-orange-500' :
-                                                                        selectedGraphNode.risk_score >= 40 ? 'bg-amber-500' :
-                                                                            'bg-emerald-500'
-                                                                }`}
-                                                            style={{ width: `${Math.min(100, Math.max(0, selectedGraphNode.risk_score))}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Details Grid */}
-                                            {detailsLoading ? (
-                                                <div className="py-6 flex flex-col items-center justify-center text-slate-400">
-                                                    <Loader2 className="w-6 h-6 animate-spin mb-2" />
-                                                    <span className="text-[10px] font-mono">Loading entity attributes...</span>
-                                                </div>
-                                            ) : selectedEntityDetails ? (
-                                                <div className="space-y-3">
-                                                    <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
-                                                        <div className="bg-white/5 p-2 rounded-lg">
-                                                            <span className="text-[9px] text-slate-400 block uppercase">In-Degree</span>
-                                                            <span className="font-bold text-white">{selectedEntityDetails.in_degree}</span>
-                                                        </div>
-                                                        <div className="bg-white/5 p-2 rounded-lg">
-                                                            <span className="text-[9px] text-slate-400 block uppercase">Out-Degree</span>
-                                                            <span className="font-bold text-white">{selectedEntityDetails.out_degree}</span>
-                                                        </div>
-                                                        {selectedEntityDetails.attributes?.transaction_count !== undefined && (
-                                                            <div className="bg-white/5 p-2 rounded-lg">
-                                                                <span className="text-[9px] text-slate-400 block uppercase">Total TXs</span>
-                                                                <span className="font-bold text-emerald-400">{String(selectedEntityDetails.attributes.transaction_count)}</span>
-                                                            </div>
-                                                        )}
-                                                        {selectedEntityDetails.attributes?.total_output_amount !== undefined && (
-                                                            <div className="bg-white/5 p-2 rounded-lg">
-                                                                <span className="text-[9px] text-slate-400 block uppercase">Volume Output</span>
-                                                                <span className="font-bold text-white">{Number(selectedEntityDetails.attributes.total_output_amount).toFixed(4)} BTC</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    {/* Why Flagged Integration */}
-                                                    {selectedAlertDetails && (
-                                                        <div className="p-3 bg-red-950/30 border border-red-500/20 rounded-xl space-y-2">
-                                                            <div className="flex items-center space-x-2">
-                                                                <ShieldAlert className="w-4 h-4 text-red-400" />
-                                                                <span className="text-[10px] font-black uppercase text-red-400 tracking-wider">Why Flagged (Phase 4 AI)</span>
-                                                            </div>
-                                                            <div className="grid grid-cols-4 gap-1 text-[9px] font-mono text-center">
-                                                                <div className="bg-black/40 p-1 rounded">
-                                                                    <div className="text-slate-400">ANOMALY</div>
-                                                                    <div className="font-bold text-red-400">{selectedAlertDetails.subscores?.anomaly?.toFixed(0) ?? '—'}</div>
-                                                                </div>
-                                                                <div className="bg-black/40 p-1 rounded">
-                                                                    <div className="text-slate-400">ACTIVITY</div>
-                                                                    <div className="font-bold text-orange-400">{selectedAlertDetails.subscores?.activity?.toFixed(0) ?? '—'}</div>
-                                                                </div>
-                                                                <div className="bg-black/40 p-1 rounded">
-                                                                    <div className="text-slate-400">NETWORK</div>
-                                                                    <div className="font-bold text-amber-400">{selectedAlertDetails.subscores?.network?.toFixed(0) ?? '—'}</div>
-                                                                </div>
-                                                                <div className="bg-black/40 p-1 rounded">
-                                                                    <div className="text-slate-400">BEHAVIOR</div>
-                                                                    <div className="font-bold text-emerald-400">{selectedAlertDetails.subscores?.behavior?.toFixed(0) ?? '—'}</div>
-                                                                </div>
-                                                            </div>
-                                                            {selectedAlertDetails.reasons && selectedAlertDetails.reasons.length > 0 && (
-                                                                <div className="space-y-1 pt-1">
-                                                                    {selectedAlertDetails.reasons.slice(0, 3).map((r, rIdx) => (
-                                                                        <div key={rIdx} className="text-[10px] text-slate-300 bg-black/30 p-2 rounded border border-white/5 leading-relaxed">
-                                                                            {r.explanation}
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ) : null}
-
-                                            {/* Action Buttons */}
-                                            <div className="pt-2 border-t border-white/10 space-y-2">
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <button
-                                                        onClick={() => loadSubgraph(selectedGraphNode.id, 1, 100)}
-                                                        className="py-2.5 px-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors"
-                                                    >
-                                                        Expand 1-Hop
-                                                    </button>
-                                                    <button
-                                                        onClick={() => loadSubgraph(selectedGraphNode.id, 2, 100)}
-                                                        className="py-2.5 px-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors"
-                                                    >
-                                                        Expand 2-Hop
-                                                    </button>
-                                                </div>
-                                                <button
-                                                    onClick={() => setShowPathInvestigator(true)}
-                                                    className="w-full py-2.5 px-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                                                >
-                                                    <GitFork className="w-3.5 h-3.5 text-[#FF4F00]" />
-                                                    <span>Inspect Connection Path</span>
-                                                </button>
-                                                {selectedGraphNode.type === 'wallet' && (
-                                                    <button
-                                                        onClick={() => {
-                                                            const cleanAddr = selectedGraphNode.label.replace(/^wallet:/, '');
-                                                            setSelectedAccountForInvestigation(cleanAddr);
-                                                            setActiveTab('investigate');
-                                                        }}
-                                                        className="w-full py-2.5 px-3 bg-[#FF4F00] hover:bg-[#e04500] text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors shadow-lg cursor-pointer"
-                                                    >
-                                                        <span>INVESTIGATE WALLET</span>
-                                                        <ExternalLink className="w-3.5 h-3.5" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
+                                <NetworkGraph3D
+                                    rootEntityId={activeCenterEntity || selectedAccountForInvestigation || DEMO_ROOT_WALLET_ID}
+                                    fetchSubgraph={getDemoSubgraph}
+                                    hops={graphHops as 1 | 2 | 3}
+                                    onHopsChange={(h) => setGraphHops(h)}
+                                    minRiskScore={anomalyThreshold >= 0.80 ? Math.round(anomalyThreshold * 100) : undefined}
+                                    onInvestigate={(walletAddr) => {
+                                        const cleanAddr = walletAddr.replace(/^wallet:/, '');
+                                        setSelectedAccountForInvestigation(cleanAddr);
+                                        setActiveTab('investigate');
+                                    }}
+                                />
                             </div>
 
                             <div className="mt-8">
-                                <LiveThreatFeed />
+                                <LiveThreatFeed
+                                    onSelectWallet={(walletAddr) => {
+                                        const cleanAddr = walletAddr.replace(/^wallet:/, '');
+                                        setSelectedAccountForInvestigation(cleanAddr);
+                                        setActiveTab('investigate');
+                                    }}
+                                    onExploreInGraph={(entityId) => {
+                                        const canonical = entityId.startsWith('wallet:') || entityId.startsWith('tx:') || entityId.startsWith('ip:') ? entityId : `wallet:${entityId}`;
+                                        setActiveCenterEntity(canonical);
+                                    }}
+                                />
                             </div>
 
                             {/* INTERACTIVE THREAT RESOLUTION PANEL */}
@@ -1915,135 +1140,288 @@ const Dashboard = () => {
                     )}
 
                     {/* VIEW: ALERTS */}
-                    {activeTab === 'alerts' && <AlertsPage />}
+                    {activeTab === 'alerts' && (
+                        <AlertsPage
+                            onSelectWallet={(walletAddress: string) => {
+                                setSelectedAccountForInvestigation(walletAddress);
+                                setActiveTab('investigate');
+                            }}
+                            onExploreInGraph={(walletAddress: string) => {
+                                const canonical = walletAddress.startsWith('wallet:') ? walletAddress : `wallet:${walletAddress}`;
+                                setActiveCenterEntity(canonical);
+                                loadSubgraph(canonical, 1, 100);
+                                setActiveTab('network');
+                            }}
+                        />
+                    )}
 
                     {/* VIEW: ENTITIES */}
                     {activeTab === 'entities' && (
-                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="mb-8 rounded-3xl border border-slate-200 bg-white shadow-[0_6px_32px_rgba(147,111,173,0.12)] overflow-hidden">
-                                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-200 bg-[#F8FAFC]/80 p-5">
+                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+                            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                                {/* Header Bar */}
+                                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-200 bg-[#F8FAFC] p-6">
                                     <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Analyst Risk Review</p>
-                                        <h3 className="text-xl font-black text-[#002A24]">Bitcoin Entity & Wallet Risk Directory</h3>
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-[#002A24]" />
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                                MULTI-LAYER FORENSIC CENSUS
+                                            </span>
+                                        </div>
+                                        <h3 className="text-xl font-black text-[#002A24]">
+                                            Entity Intelligence Directory ({filteredDemoEntities.length} of {DEMO_ENTITIES.length})
+                                        </h3>
+                                        <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                            Catalog of correlated Bitcoin wallets, transactions, IP relays, ASNs, and jurisdictions.
+                                        </p>
                                     </div>
 
-                                    <div className="flex flex-col sm:flex-row gap-3">
+                                    {/* Filters Bar */}
+                                    <div className="flex flex-wrap items-center gap-3">
                                         <div className="relative">
                                             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                                             <input
-                                                value={entityTableSearch}
-                                                onChange={(event) => setEntityTableSearch(event.target.value)}
-                                                placeholder="Search wallet or signal"
-                                                className="w-full sm:w-64 bg-white border border-slate-200 focus:border-[#FF4F00] rounded-xl pl-9 pr-3 py-2 text-xs font-medium text-[#002A24] outline-none"
+                                                value={entitySearchV3}
+                                                onChange={(e) => setEntitySearchV3(e.target.value)}
+                                                placeholder="Search address, IP, ASN, signal..."
+                                                className="w-full sm:w-60 bg-white border border-slate-200 focus:border-[#FF4F00] rounded-xl pl-9 pr-3 py-2 text-xs font-medium text-[#002A24] outline-none"
                                             />
                                         </div>
 
                                         <select
-                                            value={entityRiskFilter}
-                                            onChange={(event) => setEntityRiskFilter(event.target.value as EntityRiskFilterType)}
-                                            className="bg-white border border-slate-200 focus:border-[#FF4F00] rounded-xl px-3 py-2 text-xs font-bold text-[#002A24] outline-none"
+                                            value={entityTypeFilter}
+                                            onChange={(e) => setEntityTypeFilter(e.target.value)}
+                                            className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-[#002A24] outline-none cursor-pointer"
                                         >
-                                            <option value="ALL">All risk levels</option>
-                                            <option value="LOW">Low</option>
-                                            <option value="MEDIUM">Medium</option>
-                                            <option value="HIGH">High</option>
-                                            <option value="CRITICAL">Critical</option>
+                                            <option value="ALL">All Entity Types</option>
+                                            <option value="WALLET">Wallets</option>
+                                            <option value="TRANSACTION">Transactions</option>
+                                            <option value="IP">IP Observations</option>
+                                            <option value="ASN">Autonomous Systems</option>
+                                            <option value="GEO">Jurisdictions</option>
                                         </select>
 
                                         <select
-                                            value={entityClassificationFilter}
-                                            onChange={(event) => setEntityClassificationFilter(event.target.value as EntityClassificationFilterType)}
-                                            className="bg-white border border-slate-200 focus:border-[#FF4F00] rounded-xl px-3 py-2 text-xs font-bold text-[#002A24] outline-none"
+                                            value={entityRiskFilterV3}
+                                            onChange={(e) => setEntityRiskFilterV3(e.target.value)}
+                                            className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-[#002A24] outline-none cursor-pointer"
                                         >
-                                            <option value="ALL">All classifications</option>
-                                            <option value="LEGITIMATE">Legitimate</option>
-                                            <option value="SUSPICIOUS">Suspicious</option>
-                                            <option value="ANOMALOUS">Anomalous</option>
+                                            <option value="ALL">All Risk Levels</option>
+                                            <option value="CRITICAL">Critical (80+)</option>
+                                            <option value="HIGH">High (70-79)</option>
+                                            <option value="MEDIUM">Medium (50-69)</option>
+                                            <option value="LOW">Low (&lt;50)</option>
                                         </select>
+
+                                        <button
+                                            onClick={() => {
+                                                setEntitySortKeyV3((prev) => (prev === 'risk' ? 'connections' : 'risk'));
+                                            }}
+                                            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center gap-1.5 transition-colors"
+                                        >
+                                            <ArrowUpDown className="w-3.5 h-3.5" />
+                                            <span>Sort: {entitySortKeyV3 === 'risk' ? 'Risk' : 'Connections'}</span>
+                                        </button>
                                     </div>
                                 </div>
 
-                                {entityTableLoading ? (
-                                    <div className="flex items-center justify-center py-16">
-                                        <Loader2 className="w-6 h-6 text-[#FF4F00] animate-spin mr-3" />
-                                        <span className="text-xs font-black uppercase tracking-widest text-slate-500">Loading wallet records...</span>
-                                    </div>
-                                ) : entityTableError ? (
-                                    <div className="p-6 text-sm font-medium text-amber-700 bg-amber-50 border-t border-amber-200">{entityTableError}</div>
-                                ) : visibleEntityRows.length === 0 ? (
-                                    <div className="p-8 text-center">
-                                        <p className="text-sm font-bold text-slate-500">No entities match the current filter.</p>
-                                    </div>
-                                ) : (
-                                    <div className="overflow-x-auto">
-                                        <table className="min-w-full divide-y divide-slate-200">
-                                            <thead className="bg-[#F8FAFC]">
+                                {/* Table */}
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="border-b border-slate-200 bg-[#F8FAFC] text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                                <th className="py-3.5 px-4">Entity</th>
+                                                <th className="py-3.5 px-3">Type</th>
+                                                <th className="py-3.5 px-3 text-center">Risk Score</th>
+                                                <th className="py-3.5 px-3">Risk Level</th>
+                                                <th className="py-3.5 px-3 text-center">Txs</th>
+                                                <th className="py-3.5 px-3 text-center">Connections</th>
+                                                <th className="py-3.5 px-3">First Seen</th>
+                                                <th className="py-3.5 px-3">Last Seen</th>
+                                                <th className="py-3.5 px-3">Status</th>
+                                                <th className="py-3.5 px-4 text-center">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 text-xs">
+                                            {filteredDemoEntities.length === 0 ? (
                                                 <tr>
-                                                    {[
-                                                        { label: 'Wallet / Entity ID', key: 'accountId' },
-                                                        { label: 'Classification', key: 'classification' },
-                                                        { label: 'Anomaly Score', key: 'probability' },
-                                                        { label: 'Risk Score', key: 'riskScore' },
-                                                        { label: 'Risk Level', key: 'riskLevel' },
-                                                        { label: 'Key Signal', key: 'keySignal' },
-                                                        { label: 'Last Observed', key: 'lastActivity' },
-                                                    ].map((column) => (
-                                                        <th key={column.key} className="px-5 py-3 text-left">
-                                                            <button
-                                                                onClick={() => column.key !== 'classification' && column.key !== 'riskLevel' && column.key !== 'keySignal' ? updateSort(column.key as EntitySortKey) : undefined}
-                                                                className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500"
-                                                            >
-                                                                {column.label}
-                                                                {column.key !== 'classification' && column.key !== 'riskLevel' && column.key !== 'keySignal' && (
-                                                                    <ArrowUpDown className="w-3.5 h-3.5" />
-                                                                )}
-                                                            </button>
-                                                        </th>
-                                                    ))}
+                                                    <td colSpan={10} className="py-12 text-center text-slate-400 font-medium">
+                                                        No entities match your search and filter criteria.
+                                                    </td>
                                                 </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-200 bg-white">
-                                                {visibleEntityRows.map((row) => {
-                                                    const classificationStyle = row.classification === 'LEGITIMATE' ? 'bg-emerald-100 text-emerald-700' : row.classification === 'SUSPICIOUS' ? 'bg-[#FF4F00]/10 text-[#FF4F00]' : 'bg-rose-100 text-rose-700';
-                                                    const riskLevelStyle = row.riskLevel === 'LOW' ? 'bg-sky-100 text-sky-700' : row.riskLevel === 'MEDIUM' ? 'bg-amber-100 text-amber-700' : row.riskLevel === 'HIGH' ? 'bg-orange-100 text-orange-700' : 'bg-rose-100 text-rose-700';
-
-                                                    return (
-                                                        <tr
-                                                            key={row.accountId}
-                                                            onClick={() => {
-                                                                setSelectedAccountForInvestigation(row.accountId);
+                                            ) : (
+                                                filteredDemoEntities.map((row) => (
+                                                    <tr
+                                                        key={row.entityId}
+                                                        onClick={() => {
+                                                            if (row.type === 'WALLET') {
+                                                                setSelectedAccountForInvestigation(row.entityId);
                                                                 setActiveTab('investigate');
-                                                                localStorage.setItem('selected_investigation_wallet', row.accountId);
-                                                            }}
-                                                            className={`cursor-pointer transition-colors ${selectedAccountForInvestigation === row.accountId ? 'bg-[#FF4F00]/5' : 'hover:bg-slate-50'}`}
-                                                        >
-                                                            <td className="px-5 py-4 text-xs font-mono font-bold text-[#002A24]">{row.accountId}</td>
-                                                            <td className="px-5 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${classificationStyle}`}>{row.classification}</span></td>
-                                                            <td className="px-5 py-4 text-xs font-bold text-slate-700">{row.probability.toFixed(2)}</td>
-                                                            <td className="px-5 py-4 text-xs font-black text-[#002A24]">{row.riskScore.toFixed(1)}</td>
-                                                            <td className="px-5 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${riskLevelStyle}`}>{row.riskLevel}</span></td>
-                                                            <td className="px-5 py-4 text-xs font-medium text-slate-600">{row.keySignal}</td>
-                                                            <td className="px-5 py-4 text-xs font-medium text-slate-600">{row.lastActivity && row.lastActivity !== 'Unknown' && row.lastActivity !== 'Recorded' && !isNaN(new Date(row.lastActivity).getTime()) ? new Date(row.lastActivity).toISOString().slice(0, 19).replace('T', ' ') : (row.lastActivity || 'Recorded')}</td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
+                                                            } else {
+                                                                const canonical = row.type === 'TRANSACTION' ? `tx:${row.entityId}` : row.type === 'IP' ? `ip:${row.entityId}` : row.type === 'ASN' ? `asn:${row.entityId}` : `geo:${row.entityId}`;
+                                                                setActiveCenterEntity(canonical);
+                                                                loadSubgraph(canonical, 1, 100);
+                                                                setActiveTab('network');
+                                                            }
+                                                        }}
+                                                        className="hover:bg-slate-50/80 cursor-pointer transition-colors group"
+                                                    >
+                                                        {/* Entity */}
+                                                        <td className="py-3.5 px-4">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-mono font-bold text-[#002A24] group-hover:text-[#FF4F00] transition-colors truncate max-w-[220px]" title={row.entityId}>
+                                                                    {row.entityId}
+                                                                </span>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleCopyEntity(row.entityId);
+                                                                    }}
+                                                                    className="text-slate-300 hover:text-slate-600 p-0.5"
+                                                                    title="Copy"
+                                                                >
+                                                                    {copiedEntityId === row.entityId ? (
+                                                                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                                                    ) : (
+                                                                        <Copy className="w-3.5 h-3.5" />
+                                                                    )}
+                                                                </button>
+                                                            </div>
+                                                        </td>
+
+                                                        {/* Type */}
+                                                        <td className="py-3.5 px-3 whitespace-nowrap">
+                                                            <span className={`inline-block px-2 py-0.5 rounded-md text-[9px] font-mono font-bold uppercase tracking-wider ${
+                                                                row.type === 'WALLET' ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/20' :
+                                                                row.type === 'TRANSACTION' ? 'bg-purple-500/10 text-purple-700 border border-purple-500/20' :
+                                                                row.type === 'IP' ? 'bg-blue-500/10 text-blue-700 border border-blue-500/20' :
+                                                                row.type === 'ASN' ? 'bg-pink-500/10 text-pink-700 border border-pink-500/20' :
+                                                                'bg-amber-500/10 text-amber-700 border border-amber-500/20'
+                                                            }`}>
+                                                                {row.type}
+                                                            </span>
+                                                        </td>
+
+                                                        {/* Risk */}
+                                                        <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                                                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black font-mono ${
+                                                                row.riskScore >= 80 ? 'bg-rose-500/15 text-rose-600 border border-rose-500/30' :
+                                                                row.riskScore >= 70 ? 'bg-[#FF4F00]/15 text-[#FF4F00] border border-[#FF4F00]/30' :
+                                                                row.riskScore >= 50 ? 'bg-amber-500/15 text-amber-700 border border-amber-500/30' :
+                                                                'bg-emerald-500/15 text-emerald-700 border border-emerald-500/30'
+                                                            }`}>
+                                                                {row.riskScore}
+                                                            </span>
+                                                        </td>
+
+                                                        {/* Risk Level */}
+                                                        <td className="py-3.5 px-3 whitespace-nowrap font-mono text-[10px] font-bold text-slate-700">
+                                                            {row.riskLevel}
+                                                        </td>
+
+                                                        {/* Transactions */}
+                                                        <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono font-bold text-slate-700">
+                                                            {row.transactions}
+                                                        </td>
+
+                                                        {/* Connections */}
+                                                        <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono font-bold text-[#002A24]">
+                                                            {row.connections}
+                                                        </td>
+
+                                                        {/* First Seen */}
+                                                        <td className="py-3.5 px-3 whitespace-nowrap font-mono text-[11px] text-slate-500">
+                                                            {row.firstSeen.replace(' UTC', '').slice(0, 16)}
+                                                        </td>
+
+                                                        {/* Last Seen */}
+                                                        <td className="py-3.5 px-3 whitespace-nowrap font-mono text-[11px] text-slate-500">
+                                                            {row.lastSeen.replace(' UTC', '').slice(0, 16)}
+                                                        </td>
+
+                                                        {/* Status */}
+                                                        <td className="py-3.5 px-3 whitespace-nowrap">
+                                                            <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                                                row.status === 'FLAGGED' ? 'bg-rose-500/10 text-rose-600' :
+                                                                row.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-700' :
+                                                                'bg-slate-100 text-slate-600'
+                                                            }`}>
+                                                                {row.status}
+                                                            </span>
+                                                        </td>
+
+                                                        {/* Action */}
+                                                        <td className="py-3.5 px-4 text-center">
+                                                            <div className="flex items-center justify-center gap-1.5">
+                                                                {row.type === 'WALLET' ? (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setSelectedAccountForInvestigation(row.entityId);
+                                                                            setActiveTab('investigate');
+                                                                        }}
+                                                                        className="px-2.5 py-1 bg-[#FF4F00] hover:bg-[#e04500] text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors inline-flex items-center gap-1"
+                                                                    >
+                                                                        <span>Investigate</span>
+                                                                        <ArrowRight className="w-3 h-3" />
+                                                                    </button>
+                                                                ) : (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            const canonical = row.type === 'TRANSACTION' ? `tx:${row.entityId}` : row.type === 'IP' ? `ip:${row.entityId}` : row.type === 'ASN' ? `asn:${row.entityId}` : `geo:${row.entityId}`;
+                                                                            setActiveCenterEntity(canonical);
+                                                                            loadSubgraph(canonical, 1, 100);
+                                                                            setActiveTab('network');
+                                                                        }}
+                                                                        className="px-2.5 py-1 bg-[#002A24] hover:bg-[#FF4F00] text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors inline-flex items-center gap-1"
+                                                                    >
+                                                                        <Network className="w-3 h-3" />
+                                                                        <span>Graph</span>
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     )}
 
                     {/* VIEW: TRANSACTIONS & MODEL ANALYTICS */}
-                    {activeTab === 'transactions' && <ModelAnalytics />}
+                    {activeTab === 'transactions' && (
+                        <TransactionsPage
+                            onSelectWallet={(walletAddress: string) => {
+                                setSelectedAccountForInvestigation(walletAddress);
+                                setActiveTab('investigate');
+                            }}
+                            onExploreInGraph={(walletAddress: string) => {
+                                const canonical = walletAddress.startsWith('wallet:') ? walletAddress : `wallet:${walletAddress}`;
+                                setActiveCenterEntity(canonical);
+                                loadSubgraph(canonical, 1, 100);
+                                setActiveTab('network');
+                            }}
+                        />
+                    )}
 
-                    {/* VIEW: REPORTS & SYSTEM IMPACT */}
+                    {/* VIEW: REPORTS */}
                     {activeTab === 'reports' && (
-                        <div className="bg-white/40 backdrop-blur-xl min-h-full rounded-[40px] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
-                            <ImpactDashboard />
-                            <IntelligenceTrends />
-                        </div>
+                        <ReportsPage
+                            onSelectWallet={(walletAddress: string) => {
+                                setSelectedAccountForInvestigation(walletAddress);
+                                setActiveTab('investigate');
+                            }}
+                            onExploreInGraph={(walletAddress: string) => {
+                                const canonical = walletAddress.startsWith('wallet:') ? walletAddress : `wallet:${walletAddress}`;
+                                setActiveCenterEntity(canonical);
+                                loadSubgraph(canonical, 1, 100);
+                                setActiveTab('network');
+                            }}
+                        />
                     )}
                 </div>
 

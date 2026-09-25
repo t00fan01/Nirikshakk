@@ -126,11 +126,12 @@ def calculate_clustering_diagnostics(
 
     inertias: Dict[str, float] = {}
     silhouettes: Dict[str, float] = {}
+    sample_size = min(len(X_scaled), 5000)
 
     for k in k_values:
-        km = KMeans(n_clusters=k, init="k-means++", n_init=10, random_state=42).fit(X_scaled)
+        km = KMeans(n_clusters=k, init="k-means++", n_init=3, random_state=42).fit(X_scaled)
         inertias[str(k)] = round(float(km.inertia_), 2)
-        sil = float(silhouette_score(X_scaled, km.labels_))
+        sil = float(silhouette_score(X_scaled, km.labels_, sample_size=sample_size, random_state=42))
         silhouettes[str(k)] = round(sil, 4)
 
     selected_k_silhouette = silhouettes.get("6", 0.0)

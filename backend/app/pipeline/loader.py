@@ -62,10 +62,10 @@ def parse_csv_content(content: str) -> Tuple[List[BitcoinTransactionRecord], Lis
                 "output_addresses": parse_list_field(row.get("output_addresses", "[]"), str),
                 "input_amounts": parse_list_field(row.get("input_amounts", "[]"), float),
                 "output_amounts": parse_list_field(row.get("output_amounts", "[]"), float),
-                "fee": float(row.get("fee") or 0.0),
+                "fee": float(row.get("fee_btc") if row.get("fee_btc") is not None and row.get("fee_btc") != "" else (row.get("fee") or 0.0)),
                 "script_type": (row.get("script_type") or "P2WPKH").strip(),
                 "geo_country": (row.get("geo_country") or "US").strip(),
-                "ASN": (row.get("ASN") or "").strip(),
+                "ASN": str(row.get("asn") if row.get("asn") is not None and row.get("asn") != "" else (row.get("ASN") or "")).strip(),
             }
             record = BitcoinTransactionRecord.model_validate(raw_record)
             valid_records.append(record)

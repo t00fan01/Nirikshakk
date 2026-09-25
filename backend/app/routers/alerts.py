@@ -39,7 +39,7 @@ def list_alerts(
             leads=[],
         )
 
-    leads_path = get_analysis_paths()["leads"]
+    leads_path = get_analysis_paths()["leads"].resolve().as_posix()
     con = duckdb.connect()
 
     where_clauses = [f"risk_score >= {min_risk_score}"]
@@ -107,7 +107,7 @@ def get_alert_detail(alert_id: str):
             detail="No analysis results available. Run /api/analysis/run first."
         )
 
-    leads_path = get_analysis_paths()["leads"]
+    leads_path = get_analysis_paths()["leads"].resolve().as_posix()
     con = duckdb.connect()
 
     clean_id = alert_id.strip()

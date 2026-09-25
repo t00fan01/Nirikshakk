@@ -33,33 +33,42 @@ class TestWalletInvestigationAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(app)
+        active_res = cls.client.get("/api/datasets/active")
+        if not active_res.json().get("has_dataset"):
+            raise unittest.SkipTest("Wallet investigation tests require a populated dataset.")
+        cls.known_wallet = KNOWN_LEAD_WALLET
+        alert_res = cls.client.get("/api/alerts?limit=1")
+        if alert_res.status_code == 200:
+            leads = alert_res.json().get("leads", []) or alert_res.json().get("alerts", [])
+            if leads:
+                cls.known_wallet = leads[0]["wallet_address"]
 
     def test_known_wallet_investigation_success(self):
         """Verify known wallet returns 200 OK with valid schema structure."""
-        response = self.client.get(f"/api/investigations/{KNOWN_LEAD_WALLET}")
+        response = self.client.get(f"/api/investigations/{self.known_wallet}")
         self.assertEqual(response.status_code, 200, f"Expected 200 but got {response.status_code}: {response.text}")
 
         data = response.json()
         validated = WalletInvestigationResponse(**data)
-        self.assertEqual(validated.wallet.address, KNOWN_LEAD_WALLET)
+        self.assertEqual(validated.wallet.address, self.known_wallet)
         self.assertGreater(validated.wallet.transaction_count, 0)
         self.assertGreaterEqual(validated.wallet.total_input_amount, 0)
         self.assertGreaterEqual(validated.wallet.total_output_amount, 0)
 
     def test_prefix_wallet_identifier_handling(self):
         """Verify prefix 'wallet:<address>' is transparently normalized."""
-        response = self.client.get(f"/api/investigations/wallet:{KNOWN_LEAD_WALLET}")
+        response = self.client.get(f"/api/investigations/wallet:{self.known_wallet}")
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["wallet"]["address"], KNOWN_LEAD_WALLET)
+        self.assertEqual(data["wallet"]["address"], self.known_wallet)
 
     def test_risk_and_evidence_consistency(self):
         """Verify risk fields match investigative leads from /api/alerts."""
-        inv_res = self.client.get(f"/api/investigations/{KNOWN_LEAD_WALLET}")
+        inv_res = self.client.get(f"/api/investigations/{self.known_wallet}")
         self.assertEqual(inv_res.status_code, 200)
         inv_data = inv_res.json()
 
-        alert_res = self.client.get(f"/api/alerts/{KNOWN_LEAD_WALLET}")
+        alert_res = self.client.get(f"/api/alerts/{self.known_wallet}")
         self.assertEqual(alert_res.status_code, 200)
         alert_data = alert_res.json()
 
@@ -78,15 +87,15 @@ class TestWalletInvestigationAPI(unittest.TestCase):
 
     def test_transactions_involve_target_wallet(self):
         """Verify every returned transaction actually involves the investigated wallet."""
-        response = self.client.get(f"/api/investigations/{KNOWN_LEAD_WALLET}?tx_limit=20")
+        response = self.client.get(f"/api/investigations/{self.known_wallet}?tx_limit=20")
         self.assertEqual(response.status_code, 200)
         data = response.json()
 
         self.assertGreater(len(data["transactions"]), 0)
         for tx in data["transactions"]:
-            is_input = KNOWN_LEAD_WALLET in tx["input_addresses"]
-            is_output = KNOWN_LEAD_WALLET in tx["output_addresses"]
-            self.assertTrue(is_input or is_output, f"Transaction {tx['txid']} does not contain {KNOWN_LEAD_WALLET}")
+            is_input = self.known_wallet in tx["input_addresses"]
+            is_output = self.known_wallet in tx["output_addresses"]
+            self.assertTrue(is_input or is_output, f"Transaction {tx['txid']} does not contain {self.known_wallet}")
             self.assertEqual(tx["is_input"], is_input)
             self.assertEqual(tx["is_output"], is_output)
             self.assertEqual(len(tx["input_amounts"]), len(tx["input_addresses"]))
@@ -95,7 +104,7 @@ class TestWalletInvestigationAPI(unittest.TestCase):
 
     def test_network_observations_correspond_to_transactions(self):
         """Verify returned network observations match transactions involving the wallet."""
-        response = self.client.get(f"/api/investigations/{KNOWN_LEAD_WALLET}?tx_limit=50&net_limit=50")
+        response = self.client.get(f"/api/investigations/{self.known_wallet}?tx_limit=50&net_limit=50")
         self.assertEqual(response.status_code, 200)
         data = response.json()
 
@@ -108,7 +117,7 @@ class TestWalletInvestigationAPI(unittest.TestCase):
 
     def test_graph_summary_structure(self):
         """Verify graph summary topology counts."""
-        response = self.client.get(f"/api/investigations/{KNOWN_LEAD_WALLET}")
+        response = self.client.get(f"/api/investigations/{self.known_wallet}")
         self.assertEqual(response.status_code, 200)
         summary = response.json()["graph_summary"]
 
@@ -133,7 +142,7 @@ class TestWalletInvestigationAPI(unittest.TestCase):
 
     def test_zero_ground_truth_leakage(self):
         """Verify response does not expose synthetic ground truth or accusatory terms."""
-        response = self.client.get(f"/api/investigations/{KNOWN_LEAD_WALLET}")
+        response = self.client.get(f"/api/investigations/{self.known_wallet}")
         self.assertEqual(response.status_code, 200)
         raw_text = response.text.lower()
 
